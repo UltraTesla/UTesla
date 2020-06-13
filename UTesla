@@ -1,0 +1,284 @@
+#!/usr/bin/env python3
+
+import os
+import socks
+import logging
+import sys
+import aiomysql
+import asyncio
+import tornado.ioloop
+
+# Configuración
+from config import defaults
+
+# Utilidades
+from utils.General import parse_config
+from utils.General import generate_whitelist
+from utils.General import show_complements
+from utils.Crypt import hibrid
+
+# Extras
+from utils.extra import init_db
+from utils.extra import init_log
+from utils.extra import execute_multi_workers
+from utils.extra import patch_logging
+
+# Módulos
+from modules.Infrastructure import core
+from modules.Infrastructure import core_init
+from modules.Infrastructure import parse
+from modules.Crypt import rsa
+from modules.Privacy import addproxy
+
+def generate_pair_keys(bit_size):
+    Rsa = rsa.Rsa()
+    Rsa.generate(bit_size)
+
+    return (Rsa.export_public_key(), Rsa.export_private_key())
+
+def main():
+    settings = parse_config.parse()
+
+    # La configuración
+    crypt_limits = settings['Crypt Limits']
+    client_conf = settings['Client']
+    logging_conf = settings['Logging']
+    server_conf = settings['Server']
+    proxy_conf = settings['Proxy']
+    languages_conf = settings['Languages']
+    
+    # Se Agregan nuevas funciones en logging para mostrar colores
+    # en el texto de forma fácil y concisa
+    patch_logging.localedir = languages_conf.get('localedir')
+    patch_logging.language = languages_conf.get('language')
+    patch_logging.apply()
+    
+    logging.info('Iniciando...')
+
+    # Para saber cuántas claves existen
+    rsa_exists = 0
+
+    # El objeto RSA
+    Rsa = rsa.Rsa(server_conf.get('hash'))
+
+    # Configuramos algunos parámetros de logging
+    init_log.init(logging_conf)
+
+    # Primero se crea la base de datos y las tablas o lo
+    # que sea que se encuentre en el archivo SQL inicial.
+    init_db.init(server_conf.get('mysql_db'),
+                 defaults.sqlfile)
+
+    # Verificamos cuántas claves existen
+    for key_exist in (server_conf.get('pub_key'),
+                      server_conf.get('priv_key')):
+        logging.debug('Comprobando la existencia de: %s', key_exist)
+
+        if (os.path.isfile(key_exist)):
+            rsa_exists += 1
+
+        else:
+            logging.warning('¡%s no existe!', key_exist)
+
+    # Verificamos que tengamos las claves pública y privada
+    if (rsa_exists == 0):
+        logging.debug('¡Las claves RSA no existen!')
+        logging.info('Generando claves RSA...')
+        logging.debug('Generando %d bits para el par de claves RSA...',
+            crypt_limits.get('rsa_key_length')
+
+        )
+
+        (public_key, private_key) = execute_multi_workers.execute(
+            generate_pair_keys,
+            server_conf.get('max_workers'),
+            crypt_limits.get('rsa_key_length')
+
+        )
+
+        logging.info('¡Claves RSA generadas con éxito!')
+        logging.debug('Escribiendo clave pública en el disco (%s)...',
+            server_conf.get('pub_key')
+
+        )
+
+        with open(server_conf.get('pub_key'), 'wb') as pub_key_fd:
+            pub_key_fd.write(public_key)
+
+        logging.debug('Escribiendo clave privada en el disco (%s)...',
+            server_conf.get('priv_key')
+
+        )
+
+        with open(server_conf.get('priv_key'), 'wb') as priv_key_fd:
+            priv_key_fd.write(private_key)
+
+        # Ahora las importamos
+        Rsa.import_public_key(public_key)
+        Rsa.import_private_key(private_key)
+
+    elif (rsa_exists == 1):
+        logging.error('¡El par de claves RSA están incompletas!')
+
+        sys.exit(2)
+
+    else:
+        logging.debug('Importando clave pública: %s',
+            server_conf.get('pub_key')
+
+        )
+
+        with open(server_conf.get('pub_key'), 'rb') as pub_key_fd:
+            Rsa.import_public_key(pub_key_fd.read())
+
+        logging.debug('Importando clave privada: %s',
+            server_conf.get('priv_key')
+
+        )
+
+        with open(server_conf.get('priv_key'), 'rb') as priv_key_fd:
+            Rsa.import_private_key(priv_key_fd.read())
+
+        logging.info('¡Claves RSA importadas con éxito!')
+
+    # Para el parser
+    parse.hibrid.Hash = server_conf.get('hash') # Se cambia la función hash
+    Parse = parse.Parser(
+        server_conf.get('init_path'), Rsa
+
+    )
+
+    # Para MySQL
+    loop = asyncio.get_event_loop()
+    pool_object = loop.run_until_complete(
+        aiomysql.create_pool(
+            read_default_file=defaults.fileconfig,
+            read_default_group='MySQL',
+            db=server_conf.get('mysql_db'),
+            autocommit=True
+        )
+
+    )
+
+    # Habilitar HTTPS
+    if (server_conf.get('use_ssl')):
+        logging.info('Habilitando SSL...')
+
+        ssl_exists = 0
+        ssl_cert = server_conf.get('ssl_cert')
+        ssl_key = server_conf.get('ssl_key')
+
+        if (ssl_cert is None) or (ssl_key is None):
+            logging.warning('No se puede usar SSL sin antes haber definido la ruta'
+                            'de la clave o el certificado')
+
+        else:
+            if not (os.path.exists(ssl_cert)):
+                ssl_exists += 1
+
+                logging.warning('El certificado "%s" no existe', 
+                    server_conf.get('ssl_cert')
+
+                )
+
+            if not (os.path.exists(ssl_key)):
+                ssl_exists += 1
+
+                logging.warning('La clave "%s" no existe',
+                    server_conf.get('ssl_key')
+
+                )
+
+            if (ssl_exists > 0):
+                logging.warning('No se puede habilitar SSL, mientras la clave o el certificado no existe')
+
+            else:
+                core_init.options['ssl_options'] = {
+                    'certfile' : server_conf.get('ssl_cert'),
+                    'keyfile'  : server_conf.get('ssl_key')
+
+                }
+
+                logging.debug('Usando SSL: CERT:%s - KEY:%s',
+                    server_conf.get('ssl_cert'),
+                    server_conf.get('ssl_key')
+
+                )
+
+    # Generamos la lista blanca para los 'Host' permitidos
+    if (server_conf.get('white_list')):
+        core_init.host_list = generate_whitelist.generate(
+            server_conf.get('white_list')
+
+        )
+
+        logging.debug('Lista blanca de host\'s: %s',
+            core_init.host_list
+
+        )
+
+    # Iniciamos la configuración del proxy
+    if (proxy_conf.get('use_proxy')):
+        logging.info('Habilitando proxy...')
+
+        addproxy.start(proxy_conf.get('proxy_type'),
+                       proxy_conf.get('addr'),
+                       proxy_conf.get('port'),
+                       proxy_conf.get('rdns'),
+                       proxy_conf.get('username'),
+                       proxy_conf.get('password'))
+
+        logging.debug('Usando proxy: %s://%s:%d con resolución DNS remota %s',
+            socks.PROXY_LISTS[proxy_conf.get('proxy_type')],
+            proxy_conf.get('addr'),
+            proxy_conf.get('port'),
+            'habilitada' if (parsed.pc_rdns) else 'deshabilitada'
+
+        )
+
+    # Asignamos la ruta de los complementos
+    show_complements.complement_file = server_conf.get('complements')
+
+    # Asignamos el nombre de usuario que conozcan las demás redes
+    core_init.user_server = server_conf.get('user_server')
+
+    # Asignamos el objeto parse ya configurado al núcleo
+    core_init.parse_object = Parse
+
+    # Colocamos el directorio de los usuarios
+    core_init.init_path = server_conf.get('init_path')
+
+    # Asignamos el valor que será usado en el encabezado 'Access-Control-Allow-Origin'
+    core_init.access_control_allow_origin = server_conf.get('access_control_allow_origin')
+
+    # Asignamos el pool al núcleo para interactuar con MySQL
+    core_init.pool_object = pool_object
+
+    # Se especifican cuántos procesos se desea usar para las operaciones paralelas en
+    # el cifrado híbrido
+    hibrid.processes = server_conf.get('max_workers')
+
+    logging.warning('Iniciando el núcleo...')
+
+    core.start(server_conf.get('lhost'),
+               server_conf.get('lport'))
+
+if __name__ == '__main__':
+    # Iniciamos el núcleo
+    try:
+        main()
+        tornado.ioloop.IOLoop().current().start()
+
+    except KeyboardInterrupt:
+        tornado.ioloop.IOLoop().current().stop()
+
+    except Exception as err:
+        logging.exception('Ocurrió una excepción inesperada:')
+
+    # Restauramos la configuración del proxy
+    addproxy.stop()
+
+    logging.info('Terminado: %d', os.getpid())
+
+    # Y salimos :p
+    sys.exit(0)

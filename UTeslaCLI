@@ -1,0 +1,321 @@
+#!/usr/bin/env python3
+
+import importlib
+import asyncio
+import logging
+import traceback
+import os
+import glob
+import sys
+import copy
+import contextlib
+import _io
+
+from utils.extra import create_translation
+from utils.extra import init_db
+from utils.extra import init_log
+from utils.extra import mysql_errors
+from utils.extra import logging_double
+from utils.extra import isinstance_multiple
+from utils.extra import execute_possible_coroutine
+
+from utils.General import parse_config
+
+from config import defaults
+
+settings = parse_config.parse()
+server_conf = settings['Server']
+language_conf = settings['Languages']
+
+# Aplicamos todos los parches para dar poderes a logging como
+# el color y la traducción
+from utils.extra import patch_logging
+
+patch_logging.language = language_conf.get('language')
+patch_logging.localedir = language_conf.get('localedir')
+patch_logging.apply()
+
+import argparse
+
+database = server_conf.get('mysql_db')
+
+__VERSION__ = '1.0.0'
+
+init_log.init(settings['Logging'])
+
+def print_help(parser, args):
+    if (args is None) or (hasattr(args, 'help')):
+        parser.print_help()
+        parser.exit()
+
+class ArgumentParserCustom(argparse.ArgumentParser):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.real_exit = True
+
+    def set_exit(self, real_exit):
+        self.real_exit = real_exit
+
+    def exit(self, *args, **kwargs):
+        if (self.real_exit):
+            super().exit(*args, **kwargs)
+
+async def main():
+    _ = create_translation.create(
+        'UTeslaCLI',
+        language_conf.get('localedir'),
+        language_conf.get('language')
+
+    )
+
+    parser = ArgumentParserCustom(add_help=False)
+    parser.set_exit(False)
+    parser.add_argument(
+        '-h', '--help',
+        help=_('Imprimir este mensaje y salir'),
+        action='store_true'
+
+    )
+    parser.add_argument(
+        '-s', '--sql-file',
+        help=_('El archivo SQL inicial. Advertencia: No modificar si no sabe lo que hace'),
+        default=defaults.sqlfile
+
+    )
+    parser.add_argument(
+        '--version',
+        action='store_const',
+        const=__VERSION__,
+        help=_('muestra la versión del programa y sale')
+
+    )
+    parser.add_argument(
+        '--no-add-path',
+        help=_('No agregar la ruta de trabajo del complemento si existe'),
+        action='store_false'
+
+    )
+    parser.add_argument(
+        '--path',
+        help=_('Rutas de trabajo arbitrarias'),
+        action='append',
+        default=[]
+
+    )
+    parser.add_argument(
+        '--no-restore',
+        help=_('No restaurar el valor del "path" original, por lo seguirán '
+             'las rutas de trabajo de los complementos. ADVERTENCIA: '
+             'puede provocar comportamientos inesperados'),
+        action='store_false'
+
+    )
+    parser.add_argument(
+        '--index',
+        help=_('El índice del espacio de trabajo. Útil si hay muchos'),
+        type=int,
+        default=0
+
+    )
+
+    # No deseo que su muestre la información incorrecta para que
+    # no se generen conflictos con el segundo llamado a
+    # parse_args(...)
+    tmp_io_file = _io.StringIO()
+
+    # Primero se piden los argumentos pasados para usarlos antes
+    # de agregar los subparsers
+    with contextlib.redirect_stderr(tmp_io_file):
+        pre_args = parser.parse_args()
+
+    subparsers = parser.add_subparsers(help=_('Complementos actuales'))
+
+    for plugin_file in glob.glob(server_conf.get('plugins') + '/*.py'):
+        if not (os.path.isfile(plugin_file)):
+            continue # Por si acaso no es un archivo válido con una extensión válida (Como un directorio)
+
+        (plugin_name, __) = os.path.splitext(
+            os.path.basename(plugin_file)
+
+        )
+
+        try:
+            (plugin_path, __) = os.path.splitext(plugin_file)
+            # Guardamos los valores del path actual para remplazarlos cuando
+            # terminemos con la operación de la importación
+            aux_path = copy.copy(sys.path)
+            workspace = []
+            workspace_name = '%s-%s' % (
+                plugin_path, defaults.workspace_extension
+
+            )
+
+            if (pre_args.no_add_path) and (os.path.isdir(workspace_name)):
+                workspace.append(workspace_name)
+
+            workspaces = workspace + pre_args.path
+            workspaces_last_index = len(workspace) - 1
+
+            sys.path = workspaces + sys.path
+
+            plugin = importlib.import_module(
+                plugin_path.replace('/', '.')
+
+            )
+
+            if (pre_args.no_restore):
+                # Ahora se restaura
+                sys.path = aux_path
+
+        except Exception as err:
+            if hasattr(err, 'lineno'):
+                logging.warning('Excepción captada en el complemento "%s" (%s) en la línea "%d": %s',
+                                plugin_name, plugin_file, err.lineno, err)
+
+            else:
+                logging.warning('Excepción captada en el complemento "%s" (%s): %s',
+                                plugin_name, plugin_file, err)
+
+            logging.debug('Ocurrió una excepción en un complemento "%s":',
+                          plugin_name, exc_info=True)
+
+            continue
+
+        if not (hasattr(plugin, 'information')):
+            logging.warning('El complemento "%s" no provee la información necesaria',
+                            plugin_name)
+            continue
+
+        information = plugin.information
+
+        # Verifico que el índice no sea incorrecto
+        if (pre_args.index < 0):
+            workspace_index = 0
+
+        elif (pre_args.index > workspaces_last_index+1):
+            workspace_index = workspaces_last_index
+
+        else:
+            workspace_index = pre_args.index
+
+        information['workspaces'] = workspaces
+        information['index'] = workspace_index
+        version = information.get('version')
+        commands = information.get('commands')
+        description = information.get('description')
+        module_translation = create_translation.create(
+            '%s-module' % (plugin_name),
+            language_conf.get('localedir'),
+            language_conf.get('language')
+
+        )
+
+        subparser = subparsers.add_parser(
+            plugin_name,
+            help=module_translation(description),
+            add_help=False
+
+        )
+
+        subparser.add_argument(
+            '-h', '--help', action='help', help=_('Imprimir este mensaje y salir')
+
+        )
+
+        if not (hasattr(plugin, 'MainParser')):
+            logging.warning('La función "MainParser" no se encuentra en el complemento "%s"', plugin_name)
+            continue
+
+        subparser.set_defaults(func=plugin.MainParser)
+
+        if (version is not None):
+            subparser.add_argument(
+                '--version',
+                action='version',
+                version=version,
+                help=_('muestra la versión del programa y sale')
+
+            )
+
+        if (commands is not None):
+            if not (isinstance(commands, list)):
+                logging.warning('¡Los parámetros a analizar del complemento "%s" no están siguiendo un tipo de dato válido!',
+                                plugin_name)
+                continue
+
+            for command in commands:
+                for group_name, params in command.items():
+                    try:
+                        isinstance_multiple.instance_by([group_name, params], [str, list])
+
+                    except AssertionError:
+                        logging.warning('El tipo de dato del nombre del grupo "%s" o el de los parámetros de éste en el complemento "%s" no es correcto',
+                                        group_name, plugin_name)
+
+                        break
+
+                    if (group_name.lower() in ('optionals', 'positionals')):
+                        parser_obj = subparser
+
+                    else:
+                        parser_obj = subparser.add_argument_group(
+                            module_translation(group_name)
+
+                        )
+
+                    for n, param in enumerate(params, 1):
+                        if not (isinstance(param, dict)):
+                            logging.warning('El tipo de dato de los argumentos identificados por el número "%d" no son correctos en el grupo "%s" sobre el complemento "%s"',
+                                            n, group_name, plugin_name)
+                            break
+
+                        try:
+                            args = param.pop('args')
+
+                        except KeyError:
+                            logging.warning('¡Los parámetros del grupo "%s" en el complemento "%s" no cuentan con una clave necesaria!',
+                                            group_name, plugin_name)
+                            break
+
+                        try:
+                            if (param.get('help')):
+                                param['help'] = module_translation(
+                                    param.get('help')
+
+                                )
+
+                            parser_obj.add_argument(*args, **param)
+
+                        except Exception as err:
+                            logging.warning('Ocurrió una excepción al agregar el complemento "%s": %s',
+                                            plugin_name, err)
+                            break
+
+    parser.set_exit(True)
+    args = parser.parse_args()
+
+    if (args.version):
+        print(args.version)
+        sys.exit(0)
+
+    if not (hasattr(args, 'func')):
+        print_help(parser, None)
+
+    # Primero se ejecutan las instrucciones SQL
+    init_db.init(database, args.sql_file)
+
+    await execute_possible_coroutine.execute(
+        args.func, args
+
+    )
+
+if __name__ == '__main__':
+    # Se ejecuta como una corutina por si acaso un plugin así lo
+    # requiera
+    try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(main())
+
+    except Exception as err:
+        logging_double.log('Ocurrió un error inesperado en alguna operación: %s', err)
