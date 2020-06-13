@@ -130,8 +130,14 @@ async def main():
         pre_args = parser.parse_args()
 
     subparsers = parser.add_subparsers(help=_('Complementos actuales'))
+    list_plugins = glob.glob(server_conf.get('plugins') + '/*.py')
 
-    for plugin_file in glob.glob(server_conf.get('plugins') + '/*.py'):
+    if (list_plugins == []):
+        logging.info('Aún no hay complementos...')
+
+        return
+
+    for plugin_file in list_plugins:
         if not (os.path.isfile(plugin_file)):
             continue # Por si acaso no es un archivo válido con una extensión válida (Como un directorio)
 
