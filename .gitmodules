@@ -1,0 +1,6 @@
+[submodule "modules/Cmd"]
+	path = modules/Cmd
+	url = https://github.com/UltraTesla/plugins
+[submodule "locales"]
+	path = locales
+	url = https://github.com/UltraTesla/languages
