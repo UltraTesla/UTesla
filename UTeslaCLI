@@ -5,6 +5,7 @@ import asyncio
 import logging
 import traceback
 import os
+import inspect
 import glob
 import sys
 import copy
@@ -231,6 +232,10 @@ async def main():
 
         if not (hasattr(plugin, 'MainParser')):
             logging.warning('La función "MainParser" no se encuentra en el complemento "%s"', plugin_name)
+            continue
+
+        if (len(inspect.getfullargspec(plugin.MainParser).args) != 1):
+            logging.warning('La función "MainParser" del complemento "%s" debe tener un argumento', plugin_name)
             continue
 
         subparser.set_defaults(func=plugin.MainParser)
