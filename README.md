@@ -1,13 +1,13 @@
 > UTesla es un proyecto de código abierto para crear redes distribuidas de servicios, fácil, rápido y seguro, usando el poder de computo de múltiples ordenadores en una única interfaz.
 
 ## Mi primer "Hello World"
-**Ultra Tesla** utiliza servicios, que son básicamente mini-programas que se adhieren a la ejecución del servidor, siguiendo una sintaxis en HTTP como la siguiente: <scheme>://<netloc>/<Service>/<Sub-Service>/<...>
+**Ultra Tesla** utiliza servicios, que son básicamente mini-programas que se adhieren a la ejecución del servidor, siguiendo una sintaxis en HTTP como la siguiente: \<scheme\>://\<netloc\>/\<Service\>/\<Sub-Service\>/\<...\>
 
-Donde *<scheme>* es '**http**' o '**https**' según la configuración del servidor; *<netloc>* es básicamente la dirección del servidor; *<Service>* es el nombre del servicio, que para este ejemplo será "**hello_world**" y los demás que son *<Sub-Service>* y *<...>* son básicamente otros mini-programas que se tendrán que usar anteponiendo el nombre del servicio anterior, por ejemplo, *<Service>/<Sub-Service>/<Sub-Service 1>/<Sub-Service 2>/<...>* y así según lo que el administrador haya propuesto.
+Donde *\<scheme\>* es '**http**' o '**https**' según la configuración del servidor; *\<netloc\>* es básicamente la dirección del servidor; *\<Service\>* es el nombre del servicio, que para este ejemplo será "**hello_world**" y los demás que son *\<Sub-Service\>* y *\<...\>* son básicamente otros mini-programas que se tendrán que usar anteponiendo el nombre del servicio anterior, por ejemplo, *\<Service\>/\<Sub-Service\>/\<Sub-Service 1\>/\<Sub-Service 2\>/\<...\>* y así según lo que el administrador haya propuesto.
 
 ```python
 class Handler:
-	async def get(self):
+    async def get(self):
     	await self.write('Hello World!')
 ```
 
