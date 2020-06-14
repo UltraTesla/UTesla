@@ -196,7 +196,7 @@ python3 -m pip install -r requirements.txt
 
 ## Contribuyendo
 
-Al igual que cada proyecto nuevo creado, soy imperfecto y puedo equivocarme, pero con todo el gusto del mundo aceptaré tu contribución, ya sea por código o no, porque hay que recordar que se trata de abarcar muchos idiomas de distintas regiones del mundo y en éso puede múltiples defectos.
+Al igual que cada proyecto nuevo creado, soy imperfecto y puedo equivocarme, pero con todo el gusto del mundo aceptaré tu contribución, ya sea por código o no, porque hay que recordar que se trata de abarcar muchos idiomas de distintas regiones del mundo y en éso puede haber múltiples defectos.
 
 ## Notas
 
