@@ -40,7 +40,7 @@ import argparse
 
 database = server_conf.get('mysql_db')
 
-__VERSION__ = '1.0.0'
+__VERSION__ = '1.0.2'
 
 init_log.init(settings['Logging'])
 

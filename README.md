@@ -179,7 +179,13 @@ Como se puede apreciar, es un proceso muy sencillo y lo mejor, es transparente p
 
 ## Dependencias
 
-* **mariadb** (probado y recomendado) o **mysql**
+**Arch Linux**:
+* **mariadb**
+
+**Debian**:
+* **mariadb-server**
+* **libmariadb-dev**
+* **python3-dev**
 
 ## Instalación
 
@@ -200,10 +206,10 @@ Al igual que cada proyecto nuevo creado, soy imperfecto y puedo equivocarme, per
 
 ## Notas
 
-* Todo el proyecto fue probado en **Arch Linux** aunque debería funcionar en otras distribuciones (como **debian** y derivados de éste)
+* El proyecto fue probado en **Debian** y **Arch Linux**
 * No se ha probado en **Windows** u otro sistema operativo
 * El proyecto usa un **protocolo propio** y **no** uno **estándar**
 * El proyecto no está definido, de eso se encarga el mismo usuario
-* Todo el proyecto fue probado en la versión **3.8.2** de python
+* Todo el proyecto fue probado en la versión **3.8.2** y **3.7.3** de python
 
 ~ DtxdF
