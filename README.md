@@ -192,8 +192,21 @@ Como se puede apreciar, es un proceso muy sencillo y lo mejor, es transparente p
 ```bash
 git clone --recursive https://github.com/UltraTesla/UTesla.git
 cd UTesla
+```
+
+**Arch Linux**:
+```bash
 sudo pacman -S mariadb
-sudo systemctl start mariadb.service
+```
+
+**Debian**:
+```bash
+sudo apt-get install mariadb-server libmariadb-dev python3-dev
+```
+
+**General**:
+```bash
+sudo systemctl start mariadb.server
 python3 -m pip install -r requirements.txt
 ./UTesla
 ```
