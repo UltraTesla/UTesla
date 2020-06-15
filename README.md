@@ -1,3 +1,5 @@
+![](screenshots/nodes.png)
+
 > UTesla es un proyecto de código abierto para crear redes distribuidas de servicios, fácil, rápido y seguro, usando el poder de computo de múltiples ordenadores en una única interfaz.
 
 ## Mi primer "Hello World"
