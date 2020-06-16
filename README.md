@@ -189,6 +189,13 @@ Como se puede apreciar, es un proceso muy sencillo y lo mejor, es transparente p
 * **libmariadb-dev**
 * **python3-dev**
 
+**Red Hat Enterprise Linux 8.2**
+* **python3-devel**
+* **gcc**
+* **mariadb**
+* **mariadb-server**
+* **mariadb-devel**
+
 ## Instalación
 
 ```bash
@@ -206,6 +213,11 @@ sudo pacman -S mariadb
 sudo apt-get install mariadb-server libmariadb-dev python3-dev
 ```
 
+**Red Hat Enterprise Linux 8.2**
+```bash
+sudo yum install python3-devel gcc mariadb mariadb-server mariadb-devel
+```
+
 **General**:
 ```bash
 sudo systemctl start mariadb.server
@@ -221,7 +233,7 @@ Al igual que cada proyecto nuevo creado, soy imperfecto y puedo equivocarme, per
 
 ## Notas
 
-* El proyecto fue probado en **Debian** y **Arch Linux**
+* El proyecto fue probado en **Red Hat Enterprise Linux 8.2**, **Debian** y **Arch Linux**
 * No se ha probado en **Windows** u otro sistema operativo
 * El proyecto usa un **protocolo propio** y **no** uno **estándar**
 * El proyecto no está definido, de eso se encarga el mismo usuario
