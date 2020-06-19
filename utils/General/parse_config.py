@@ -27,9 +27,7 @@ def parse() -> dict:
             ('connect_timeout', float),
             ('request_timeout', float),
             ('follow_redirects', bool),
-            ('max_redirects', int),
-            ('user_agent', str),
-            ('use_gzip', bool)
+            ('max_redirects', int)
 
         ],
         

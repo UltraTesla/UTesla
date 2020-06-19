@@ -44,8 +44,6 @@ defaults = {
         'request_timeout'              : 30.0,
         'follow_redirects'             : True,
         'max_redirects'                : 5,
-        'user_agent'                   : 'Ultra Tesla - Client 1.0',
-        'use_gzip'                     : False
 
     },
 

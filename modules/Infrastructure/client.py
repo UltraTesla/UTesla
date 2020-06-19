@@ -5,6 +5,8 @@ import aiofiles
 from modules.Infrastructure import parse
 from modules.Crypt import rsa
 
+config = {}
+
 class UTeslaClient:
     def __init__(self,
                  username,
@@ -81,6 +83,7 @@ class UTeslaClient:
             allow_nonstandard_methods=True,
             headers=self.headers,
             method=method,
+            **config,
             **kwargs
 
         )

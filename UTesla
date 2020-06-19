@@ -27,6 +27,7 @@ from utils.extra import patch_logging
 from modules.Infrastructure import core
 from modules.Infrastructure import core_init
 from modules.Infrastructure import parse
+from modules.Infrastructure import client
 from modules.Crypt import rsa
 from modules.Privacy import addproxy
 
@@ -235,6 +236,9 @@ def main():
             'habilitada' if (parsed.pc_rdns) else 'deshabilitada'
 
         )
+
+    # Configuramos algunos parámetros del cliente para que sea más eficiente
+    client.config = client_conf
 
     # Asignamos la ruta de los complementos
     show_complements.complement_file = server_conf.get('complements')
