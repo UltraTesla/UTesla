@@ -207,13 +207,13 @@ class Handler:
         await self.write('Hello Friend!')
 ```
 
-Ahora un cliente puede hacer una petición usando una URL parecida a: **<Scheme>://<netloc>/greeting/hello_friend** y obtendría:
+Ahora un cliente puede hacer una petición usando una URL parecida a: **\<Scheme\>://\<netloc\>/greeting/hello_friend** y obtendría:
 
 ```
 Hello Friend!
 ```
 
-Adentro de esa carpeta se crean más carpetas (**si se desea**), pero lo peculiar de todo esto es que no necesitan usar una sintaxis similar a "<Nombre del servicio>-folder", simplemente creando una carpeta e insertando nuevos servicios que sigan una estructura similar a los anteriores es más que suficiente.
+Adentro de esa carpeta se crean más carpetas (**si se desea**), pero lo peculiar de todo esto es que no necesitan usar una sintaxis similar a "\<Nombre del servicio\>-folder", simplemente creando una carpeta e insertando nuevos servicios que sigan una estructura similar a los anteriores es más que suficiente.
 
 ```bash
 mkdir complements/greeting-folder/farewell
@@ -226,7 +226,7 @@ class Handler:
         await self.write('Bye!')
 ```
 
-Y el cliente puede usar una estructura similar a: **<scheme>://<netloc>/greeting/farewell/bye**
+Y el cliente puede usar una estructura similar a: **\<scheme\>://\<netloc\>/greeting/farewell/bye**
 
 ## Módulos
 
