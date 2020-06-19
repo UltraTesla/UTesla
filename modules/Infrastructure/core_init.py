@@ -47,6 +47,10 @@ class CoreHandler(tornado.web.RequestHandler):
             handler.set_defaults_headers = self.set_default_headers
             handler.prepare = self.prepare
             handler.head = self.head
+            handler.get_arguments = self.get_arguments
+            handler.get_argument = self.get_argument
+            handler.write_error = self.write_error
+            handler.render = self.render
 
             def __init__(self):
                 self.modules = value['modules']
