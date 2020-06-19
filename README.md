@@ -179,22 +179,80 @@ Hello Friend!
 
 Como se puede apreciar, es un proceso muy sencillo y lo mejor, es transparente para el usuario.
 
-## Dependencias
+## Sub servicios
 
-**Arch Linux**:
-* **mariadb**
+Ya se ha explicado anteriormente qué son los **sub servicios**, pero no se han explicado cómo crearlos. Al igual que la creación de *plugins* y servicios es muy sencillo.
 
-**Debian**:
-* **mariadb-server**
-* **libmariadb-dev**
-* **python3-dev**
+Lo primero que hay que hacer es crear un servicio, como '**greeting**' (**complements/greeting.py**).
 
-**Red Hat Enterprise Linux 8.2**
-* **python3-devel**
-* **gcc**
-* **mariadb**
-* **mariadb-server**
-* **mariadb-devel**
+```python
+class Handler:
+    pass
+```
+
+**Se pueden colocar los métodos HTTP si se desea, pero para este caso no lo necesitamos**
+
+Ahora para la creación de **sub servicios** simplemente se crea una carpeta en '**complements**' con el mismo nombre del servicio mas '**-folder**'.
+
+```bash
+mkdir complements/greeting-folder
+```
+
+En esa carpeta se tienen que agregar más archivos que sigan una estructura similar a la del servicio padre, como por ejemplo:
+
+**complements/greeting-folder/hello_friend.py**:
+```python
+class Handler:
+    async def get(self):
+        await self.write('Hello Friend!')
+```
+
+Ahora un cliente puede hacer una petición usando una URL parecida a: **<Scheme>://<netloc>/greeting/hello_friend** y obtendría:
+
+```
+Hello Friend!
+```
+
+Adentro de esa carpeta se crean más carpetas (**si se desea**), pero lo peculiar de todo esto es que no necesitan usar una sintaxis similar a "<Nombre del servicio>-folder", simplemente creando una carpeta e insertando nuevos servicios que sigan una estructura similar a los anteriores es más que suficiente.
+
+```bash
+mkdir complements/greeting-folder/farewell
+```
+
+**complements/greeting-folder/farewell/bye.py**:
+```python
+class Handler:
+    async def get(self):
+        await self.write('Bye!')
+```
+
+Y el cliente puede usar una estructura similar a: **<scheme>://<netloc>/greeting/farewell/bye**
+
+## Módulos
+
+Los módulos son muy útiles en caso de que se necesite integrar ficheros de python a los complementos, para que la escritura sea más limpia y siga mejores prácticas.
+
+Para crear un módulo es necesario crear primero un servicio, en este caso '**math**' (**complements/math.py**)
+
+```python
+class Handler:
+    async def post(self):
+        sum = self.modules.get('sum')
+        num1 = self.get_argument('num1', 0)
+        num2 = self.get_argument('num2', 0)
+
+        await self.write('Result:' + str(sum.calculate(num1, num2)))
+```
+
+Ahora se debe crear una carpeta con el nombre del servicio mas '**-modules**' y ahí se agregan ficheros de python como cualquier otro; siguiendo lo que necesita el código anterior:
+
+**complements/math-modules/sum.py**:
+```python
+def calculate(x, y):
+    return x + y
+```
+
+Eso sería todo, muy sencillo y más modular.
 
 ## Instalación
 
@@ -233,7 +291,6 @@ Al igual que cada proyecto nuevo creado, soy imperfecto y puedo equivocarme, per
 
 ## Notas
 
-* El proyecto fue probado en **Red Hat Enterprise Linux 8.2**, **Debian** y **Arch Linux**
 * No se ha probado en **Windows** u otro sistema operativo
 * El proyecto usa un **protocolo propio** y **no** uno **estándar**
 * El proyecto no está definido, de eso se encarga el mismo usuario
