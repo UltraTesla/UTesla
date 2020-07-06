@@ -299,9 +299,40 @@ class UTeslaConnector:
 
         )
 
-    async def get_networks(self):
-        return await self._acquire(
-            'SELECT network FROM networks',
-            cmd=READ
+    async def get_networks(self, limit=0, asc=True, show_all=False):
+        args = []
+
+        if (show_all):
+            sql = ['SELECT id_network, network, token FROM networks ORDER BY id_network']
+
+            if (asc):
+                sql.append('ASC')
+
+            else:
+                sql.append('DESC')
+
+            if (limit > 0):
+                sql.append('LIMIT %s')
+                args.append(limit)
+
+            result = await self._acquire(
+                ' '.join(sql), args, cmd=READ
+
+            )
+
+            return result
+
+        else:
+            return await self._acquire(
+                'SELECT network FROM networks',
+                cmd=READ
+
+            )
+
+    async def delete_network(self, networkid):
+        logging.warning('¡Borrando la red con el identificador: ID:%d!', networkid)
+
+        await self._acquire(
+            'DELETE FROM networks WHERE id_network = %s', (networkid,)
 
         )

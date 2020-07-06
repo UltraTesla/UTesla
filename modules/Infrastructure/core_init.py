@@ -35,7 +35,7 @@ pool_object: object = None
 host_list: str = '.*'
 
 # El valor que será usado en el encabezado 'Access-Control-Allow-Origin'
-access_control_allow_origin = '*'
+access_control_allow_origin: str = '*'
 
 class CoreHandler(tornado.web.RequestHandler):
     def _generate_complement_list(self):
@@ -44,13 +44,19 @@ class CoreHandler(tornado.web.RequestHandler):
         for name, value in show_complements.show().items():
             handler = value['handler']
             handler.write = self.write
+            handler.write_error = self.write_error
             handler.set_defaults_headers = self.set_default_headers
             handler.prepare = self.prepare
             handler.head = self.head
+            handler.render_string = self.render_string
+            handler.render = self.render
             handler.get_arguments = self.get_arguments
             handler.get_argument = self.get_argument
-            handler.write_error = self.write_error
-            handler.render = self.render
+            handler.get_query_argument = self.get_query_argument
+            handler.get_query_arguments = self.get_query_arguments
+            handler.get_client = self.get_client
+            handler.get_all = self.get_all
+            handler.get_all_queries = self.get_all_queries
 
             def __init__(self):
                 self.modules = value['modules']
@@ -141,6 +147,15 @@ class CoreHandler(tornado.web.RequestHandler):
 
     def write_error(self, status_code, **kwargs):
         pass
+
+    def get_all(self):
+        return self.body
+
+    def get_all_queries(self):
+        return self.request.arguments
+
+    def get_client(self):
+        return self.request
 
     def get_argument(self, name, default=None):
         if (self.request.method in defaults.write_methods):

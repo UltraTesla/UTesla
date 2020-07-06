@@ -21,3 +21,6 @@ class InvalidRequest(Exception):
 
 class EmptyReply(Exception):
     """ Cuando la respuesta está vacia """
+
+class NetworkNotExists(Exception):
+    """ Cuando la red no existe """
