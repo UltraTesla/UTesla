@@ -63,7 +63,9 @@ defaults = {
         'ssl_cert'                     : None,
         'pub_key'                      : 'keys/key.pub',
         'priv_key'                     : 'keys/key.priv',
-        'init_path'                    : 'data'
+        'init_path'                    : 'data',
+        'init_proc'                    : 'processes',
+        'clearProcs'                   : .5
 
     },
 

@@ -4,6 +4,7 @@ import os
 import socks
 import logging
 import sys
+import re
 import aiomysql
 import asyncio
 import tornado.ioloop
@@ -15,6 +16,7 @@ from config import defaults
 from utils.General import parse_config
 from utils.General import generate_whitelist
 from utils.General import show_complements
+from utils.General import proc_control
 from utils.Crypt import hibrid
 
 # Extras
@@ -30,6 +32,35 @@ from modules.Infrastructure import parse
 from modules.Infrastructure import client
 from modules.Crypt import rsa
 from modules.Privacy import addproxy
+
+def safeQuit():
+    if (len(core_init.procs) > 0):
+        while (len(core_init.procs) > 0):
+            try:
+                quest = input('Todavía hay procesos abiertos. ¿Desea enviar una señal '
+                              '{white}<{null}{yellow}SIGKILL{null}{white}>{null}?: ')[:1]
+
+            except (KeyboardInterrupt, EOFError):
+                print()
+                continue
+
+            if not (quest):
+                continue
+
+            if (re.match('[sS]|[yY]|1', quest)):
+                logging.critical('mandando una señal {white}<{null}{yellow}SIGKILL{null}{white}>{null}...')
+
+                core_init.procs.clear(killProc=True)
+
+            elif (re.match('[nN]|0', quest)):
+                logging.warning('Mandando una señal {white}<{null}{yellow}SIGTERM{null}{white}>{null}...')
+
+                core_init.procs.clear()
+
+            else:
+                logging.warning('Opción inválida, eliga entre ({white}[sS]|[yY]|1{null}) '
+                                '({white}afirmación{null}) o ({white}[nN]|0{null}) ({white}'
+                                'negación{null})')
 
 def generate_pair_keys(bit_size):
     Rsa = rsa.Rsa()
@@ -258,6 +289,13 @@ def main():
     # Asignamos el pool al núcleo para interactuar con MySQL
     core_init.pool_object = pool_object
 
+    # Asignamos el control de procesos y subprocesos para interactuar de
+    # manera segura y eficiente con éstos
+    core_init.procs = proc_control.ProcControl(
+        server_conf.get('init_proc'), server_conf.get('clearProcs')
+
+    )
+
     # Se especifican cuántos procesos se desea usar para las operaciones paralelas en
     # el cifrado híbrido
     hibrid.processes = server_conf.get('max_workers')
@@ -274,7 +312,12 @@ if __name__ == '__main__':
         tornado.ioloop.IOLoop().current().start()
 
     except KeyboardInterrupt:
+        core_init.procs.setTarget('processes')
+        core_init.procs.clear()
         tornado.ioloop.IOLoop().current().stop()
+
+        # Tratamos de salir mandando una señal <SIGTERM> o <SIGKILL> según lo decida el usuario
+        safeQuit()
 
     except Exception as err:
         logging.exception('Ocurrió una excepción inesperada:')

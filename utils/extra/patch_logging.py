@@ -1,3 +1,4 @@
+import builtins
 import logging
 import gettext
 
@@ -13,12 +14,13 @@ _logging_error = logging.error
 _logging_warning = logging.warning
 _logging_info = logging.info
 _logging_debug = logging.debug
+_input = builtins.input
 
 def _func(msg, func, *args, **kwargs):
     _ = gettext.getcontroller
-    msg = replace_colors.replace(msg)
+    msg = replace_colors.replace(_(msg))
 
-    func(_(msg), *args, **kwargs)
+    return func(msg, *args, **kwargs)
 
 def critical(msg, *args, **kwargs):
     _func(msg, _logging_critical, *args, **kwargs)
@@ -34,6 +36,15 @@ def info(msg, *args, **kwargs):
 
 def debug(msg, *args, **kwargs):
     _func(msg, _logging_debug, *args, **kwargs)
+
+def input_func(msg=None):
+    if (msg is not None):
+        val = _func(msg, _input)
+
+    else:
+        val = _input()
+
+    return val
 
 def apply():
     gettext.getcontroller = create_translation.create(
@@ -55,3 +66,4 @@ def apply():
     logging.warning = warning
     logging.info = info
     logging.debug = debug
+    builtins.input = input_func

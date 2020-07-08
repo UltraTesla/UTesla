@@ -37,6 +37,9 @@ host_list: str = '.*'
 # El valor que será usado en el encabezado 'Access-Control-Allow-Origin'
 access_control_allow_origin: str = '*'
 
+# El control de procesos y subprocesos
+procs: object = None
+
 class CoreHandler(tornado.web.RequestHandler):
     def _generate_complement_list(self):
         complements = []
@@ -60,11 +63,12 @@ class CoreHandler(tornado.web.RequestHandler):
 
             def __init__(self):
                 self.modules = value['modules']
+                self.procs = procs
 
             handler.__init__ = __init__
 
             complements.append(
-                ('/' + name + '(/*)$', handler())
+                ('/' + re.escape(name) + '(/*)$', handler())
 
             )
 
@@ -113,6 +117,9 @@ class CoreHandler(tornado.web.RequestHandler):
     async def prepare(self):
         exception = True
         status_code = 500
+
+        # Removemos las direcciones de los procesos e hilos ya terminados
+        procs.autoRemove()
 
         try:
             await self.post_prepare()

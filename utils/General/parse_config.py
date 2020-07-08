@@ -47,7 +47,9 @@ def parse() -> dict:
             ('ssl_cert', str),
             ('init_path', str),
             ('pub_key', str),
-            ('priv_key', str)
+            ('priv_key', str),
+            ('init_proc', str),
+            ('clearProcs', float)
 
         ],
         
