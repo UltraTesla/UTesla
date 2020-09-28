@@ -1,44 +1,45 @@
 #!/usr/bin/env python3
 
 import os
+import stat
+import errno
 import socks
 import logging
 import sys
 import re
-import aiomysql
 import asyncio
 import tornado.ioloop
+import tornado.autoreload
 
 # Configuración
 from config import defaults
 
 # Utilidades
 from utils.General import parse_config
-from utils.General import generate_whitelist
-from utils.General import show_complements
-from utils.General import proc_control
-from utils.Crypt import hibrid
+from utils.General import (proc_stream, proc_control)
 
 # Extras
+from utils.extra import procs_repr
 from utils.extra import init_db
 from utils.extra import init_log
-from utils.extra import execute_multi_workers
-from utils.extra import patch_logging
+from utils.extra import create_pool
+from utils.extra import create_translation
 
 # Módulos
 from modules.Infrastructure import core
-from modules.Infrastructure import core_init
-from modules.Infrastructure import parse
-from modules.Infrastructure import client
-from modules.Crypt import rsa
+from modules.Crypt import ed25519
 from modules.Privacy import addproxy
 
-def safeQuit():
-    if (len(core_init.procs) > 0):
-        while (len(core_init.procs) > 0):
+# Cuando haya funcionalidades futuras y sean incompatibles con versiones
+# anteriores, la versión le indicará al cliente qué hacer.
+__VERSION__ = "2.0.0"
+
+def safeQuit(ProcControl):
+    if (len(ProcControl) > 0):
+        while (len(ProcControl) > 0):
             try:
-                quest = input('Todavía hay procesos abiertos. ¿Desea enviar una señal '
-                              '{white}<{null}{yellow}SIGKILL{null}{white}>{null}?: ')[:1]
+                quest = input(_("Todavía hay procesos abiertos. ¿Desea enviar una señal "
+                              "<SIGKILL>?: "))[:1]
 
             except (KeyboardInterrupt, EOFError):
                 print()
@@ -47,285 +48,217 @@ def safeQuit():
             if not (quest):
                 continue
 
-            if (re.match('[sS]|[yY]|1', quest)):
-                logging.critical('mandando una señal {white}<{null}{yellow}SIGKILL{null}{white}>{null}...')
+            if (re.match("[sS]|[yY]|1", quest)):
+                logging.critical(_("mandando una señal <SIGKILL>..."))
 
-                core_init.procs.clear(killProc=True)
+                ProcControl.clear(killProc=True)
 
-            elif (re.match('[nN]|0', quest)):
-                logging.warning('Mandando una señal {white}<{null}{yellow}SIGTERM{null}{white}>{null}...')
+            elif (re.match("[nN]|0", quest)):
+                logging.warning(_("Mandando una señal <SIGTERM>..."))
 
-                core_init.procs.clear()
+                ProcControl.clear()
 
             else:
-                logging.warning('Opción inválida, eliga entre ({white}[sS]|[yY]|1{null}) '
-                                '({white}afirmación{null}) o ({white}[nN]|0{null}) ({white}'
-                                'negación{null})')
+                logging.warning(_("Opción inválida, eliga entre ([sS]|[yY]|1) "
+                                "(afirmación) o ([nN]|0) (negación)"))
 
-def generate_pair_keys(bit_size):
-    Rsa = rsa.Rsa()
-    Rsa.generate(bit_size)
+parameters = None
+handler = None
+ioloop = tornado.ioloop.IOLoop().current()
 
-    return (Rsa.export_public_key(), Rsa.export_private_key())
+options = {}
 
-def main():
+try:
     settings = parse_config.parse()
 
     # La configuración
-    crypt_limits = settings['Crypt Limits']
-    client_conf = settings['Client']
-    logging_conf = settings['Logging']
-    server_conf = settings['Server']
-    proxy_conf = settings['Proxy']
-    languages_conf = settings['Languages']
-    
-    # Se Agregan nuevas funciones en logging para mostrar colores
-    # en el texto de forma fácil y concisa
-    patch_logging.localedir = languages_conf.get('localedir')
-    patch_logging.language = languages_conf.get('language')
-    patch_logging.apply()
-    
-    logging.info('Iniciando...')
+    crypt_limits = settings["Crypt Limits"]
+    client_conf = settings["Client"]
+    logging_conf = settings["Logging"]
+    server_conf = settings["Server"]
+    proxy_conf = settings["Proxy"]
+    templates_conf = settings["Templates"]
 
+    # El envoltorio gettext para la internacionalización
+    _ = create_translation.create("UTesla")
+    
     # Para saber cuántas claves existen
-    rsa_exists = 0
-
-    # El objeto RSA
-    Rsa = rsa.Rsa(server_conf.get('hash'))
+    key_exists = 0
 
     # Configuramos algunos parámetros de logging
     init_log.init(logging_conf)
 
+    logging.info(_("Iniciando..."))
+
     # Primero se crea la base de datos y las tablas o lo
     # que sea que se encuentre en el archivo SQL inicial.
-    init_db.init(server_conf.get('mysql_db'),
+    init_db.init(server_conf.get("mysql_db"),
                  defaults.sqlfile)
 
     # Verificamos cuántas claves existen
-    for key_exist in (server_conf.get('pub_key'),
-                      server_conf.get('priv_key')):
-        logging.debug('Comprobando la existencia de: %s', key_exist)
+    for key_exist in (server_conf.get("pub_key"),
+                      server_conf.get("priv_key")):
+        logging.debug(_("Comprobando la existencia de: %s"), key_exist)
 
         if (os.path.isfile(key_exist)):
-            rsa_exists += 1
+            key_exists += 1
 
         else:
-            logging.warning('¡%s no existe!', key_exist)
+            logging.warning(_("¡%s no existe!"), key_exist)
 
     # Verificamos que tengamos las claves pública y privada
-    if (rsa_exists == 0):
-        logging.debug('¡Las claves RSA no existen!')
-        logging.info('Generando claves RSA...')
-        logging.debug('Generando %d bits para el par de claves RSA...',
-            crypt_limits.get('rsa_key_length')
+    if (key_exists == 0):
+        logging.debug(_("¡Las claves Ed25519 no existen!"))
+        logging.info(_("Generando claves Ed25519..."))
+
+        keypair = ed25519.to_raw()
+
+        logging.info(_("¡Claves Ed25519 generadas con éxito!"))
+        logging.debug(_("Escribiendo clave pública en el disco (%s)..."),
+            server_conf.get("pub_key")
 
         )
 
-        (public_key, private_key) = execute_multi_workers.execute(
-            generate_pair_keys,
-            server_conf.get('max_workers'),
-            crypt_limits.get('rsa_key_length')
+        with open(server_conf.get("pub_key"), "wb") as pub_key_fd:
+            pub_key_fd.write(keypair.public)
+
+        logging.debug(_("Escribiendo clave privada en el disco (%s)..."),
+            server_conf.get("priv_key")
 
         )
 
-        logging.info('¡Claves RSA generadas con éxito!')
-        logging.debug('Escribiendo clave pública en el disco (%s)...',
-            server_conf.get('pub_key')
+        with open(server_conf.get("priv_key"), "wb") as priv_key_fd:
+            priv_key_fd.write(keypair.private)
 
-        )
+    elif (key_exists == 1):
+        logging.error(_("¡El par de claves Ed25519 están incompletas!"))
 
-        with open(server_conf.get('pub_key'), 'wb') as pub_key_fd:
-            pub_key_fd.write(public_key)
-
-        logging.debug('Escribiendo clave privada en el disco (%s)...',
-            server_conf.get('priv_key')
-
-        )
-
-        with open(server_conf.get('priv_key'), 'wb') as priv_key_fd:
-            priv_key_fd.write(private_key)
-
-        # Ahora las importamos
-        Rsa.import_public_key(public_key)
-        Rsa.import_private_key(private_key)
-
-    elif (rsa_exists == 1):
-        logging.error('¡El par de claves RSA están incompletas!')
-
-        sys.exit(2)
+        sys.exit(errno.ENOENT)
 
     else:
-        logging.debug('Importando clave pública: %s',
-            server_conf.get('pub_key')
+        logging.debug(_("Importando claves Ed25519..."))
 
-        )
+        with open(server_conf.get("pub_key"), "rb") as pub_key_fd:
+            with open(server_conf.get("priv_key"), "rb") as priv_key_fd:
+                keypair = ed25519.import_keys(
+                    pub_key_fd.read(), priv_key_fd.read()
+                    
+                )
 
-        with open(server_conf.get('pub_key'), 'rb') as pub_key_fd:
-            Rsa.import_public_key(pub_key_fd.read())
+        logging.info(_("¡Claves Ed25519 importadas con éxito!"))
 
-        logging.debug('Importando clave privada: %s',
-            server_conf.get('priv_key')
+    logging.debug(
+        _("Asignando permisos (CHMOD %o) a '%s'"),
+        (stat.S_IREAD | stat.S_IWRITE), server_conf.get("priv_key"))
 
-        )
-
-        with open(server_conf.get('priv_key'), 'rb') as priv_key_fd:
-            Rsa.import_private_key(priv_key_fd.read())
-
-        logging.info('¡Claves RSA importadas con éxito!')
-
-    # Para el parser
-    parse.hibrid.Hash = server_conf.get('hash') # Se cambia la función hash
-    Parse = parse.Parser(
-        server_conf.get('init_path'), Rsa
-
-    )
+    # Asignamos los permisos correctos para proteger un poco más
+    # la clave privada.
+    os.chmod(server_conf.get("priv_key"), stat.S_IREAD | stat.S_IWRITE)
 
     # Para MySQL
     loop = asyncio.get_event_loop()
     pool_object = loop.run_until_complete(
-        aiomysql.create_pool(
-            read_default_file=defaults.fileconfig,
-            read_default_group='MySQL',
-            db=server_conf.get('mysql_db'),
-            autocommit=True
+        create_pool.create(
+            database=server_conf.get("mysql_db"),
+            config=settings
+
         )
 
     )
-
-    # Habilitar HTTPS
-    if (server_conf.get('use_ssl')):
-        logging.info('Habilitando SSL...')
-
-        ssl_exists = 0
-        ssl_cert = server_conf.get('ssl_cert')
-        ssl_key = server_conf.get('ssl_key')
-
-        if (ssl_cert is None) or (ssl_key is None):
-            logging.warning('No se puede usar SSL sin antes haber definido la ruta'
-                            'de la clave o el certificado')
-
-        else:
-            if not (os.path.exists(ssl_cert)):
-                ssl_exists += 1
-
-                logging.warning('El certificado "%s" no existe', 
-                    server_conf.get('ssl_cert')
-
-                )
-
-            if not (os.path.exists(ssl_key)):
-                ssl_exists += 1
-
-                logging.warning('La clave "%s" no existe',
-                    server_conf.get('ssl_key')
-
-                )
-
-            if (ssl_exists > 0):
-                logging.warning('No se puede habilitar SSL, mientras la clave o el certificado no existe')
-
-            else:
-                core_init.options['ssl_options'] = {
-                    'certfile' : server_conf.get('ssl_cert'),
-                    'keyfile'  : server_conf.get('ssl_key')
-
-                }
-
-                logging.debug('Usando SSL: CERT:%s - KEY:%s',
-                    server_conf.get('ssl_cert'),
-                    server_conf.get('ssl_key')
-
-                )
-
-    # Generamos la lista blanca para los 'Host' permitidos
-    if (server_conf.get('white_list')):
-        core_init.host_list = generate_whitelist.generate(
-            server_conf.get('white_list')
-
-        )
-
-        logging.debug('Lista blanca de host\'s: %s',
-            core_init.host_list
-
-        )
 
     # Iniciamos la configuración del proxy
-    if (proxy_conf.get('use_proxy')):
-        logging.info('Habilitando proxy...')
+    if (proxy_conf.get("use_proxy")):
+        logging.info(_("Habilitando proxy..."))
 
-        addproxy.start(proxy_conf.get('proxy_type'),
-                       proxy_conf.get('addr'),
-                       proxy_conf.get('port'),
-                       proxy_conf.get('rdns'),
-                       proxy_conf.get('username'),
-                       proxy_conf.get('password'))
+        addproxy.start(proxy_conf.get("proxy_type"),
+                       proxy_conf.get("addr"),
+                       proxy_conf.get("port"),
+                       proxy_conf.get("rdns"),
+                       proxy_conf.get("username"),
+                       proxy_conf.get("password"))
 
-        logging.debug('Usando proxy: %s://%s:%d con resolución DNS remota %s',
-            socks.PROXY_LISTS[proxy_conf.get('proxy_type')],
-            proxy_conf.get('addr'),
-            proxy_conf.get('port'),
-            'habilitada' if (parsed.pc_rdns) else 'deshabilitada'
+        logging.debug(_("Usando proxy: %s://%s:%d con resolución DNS remota %s"),
+            socks.PROXY_TYPES[proxy_conf.get("proxy_type")],
+            proxy_conf.get("addr"),
+            proxy_conf.get("port"),
+            _("habilitada") if (proxy_conf.get("rds")) else _("deshabilitada")
 
         )
 
-    # Configuramos algunos parámetros del cliente para que sea más eficiente
-    client.config = client_conf
+    if (server_conf.get("autoreload")):
+        logging.warning(_("¡La autorecarga de servicios está habilitada!"))
 
-    # Asignamos la ruta de los complementos
-    show_complements.complement_file = server_conf.get('complements')
+        tornado.autoreload.start(server_conf.get("check_time"))
 
-    # Asignamos el nombre de usuario que conozcan las demás redes
-    core_init.user_server = server_conf.get('user_server')
+    # Definimos los procedimientos
+    proc_control_obj = proc_control.ProcControl(
+        server_conf.get("init_proc"), server_conf.get("clearProcs")
 
-    # Asignamos el objeto parse ya configurado al núcleo
-    core_init.parse_object = Parse
+    )
+    proc_stream_obj = proc_stream.ProcStream()
 
-    # Colocamos el directorio de los usuarios
-    core_init.init_path = server_conf.get('init_path')
+    logging.debug(_("Configurando parámetros del servidor..."))
 
-    # Asignamos el valor que será usado en el encabezado 'Access-Control-Allow-Origin'
-    core_init.access_control_allow_origin = server_conf.get('access_control_allow_origin')
+    # Opciones para el servidor
+    options["init_path"] = server_conf.get("init_path")
+    options["user_data"] = server_conf.get("user_data")
+    options["pool_object"] = pool_object
+    options["procs"] = procs_repr.procedures(
+        proc_control_obj, proc_stream_obj
+            
+    )
+    options["memory_limit"] = server_conf.get("memory_limit")
+    options["utesla_version"] = __VERSION__
+    options["service_file"] = server_conf.get("services")
+    options["recv_timeout"] = server_conf.get("recv_timeout")
+    options["read_chunk_size"] = server_conf.get("read_chunk_size")
+    options["index_name"] = server_conf.get("index_name")
+    options["admin_service"] = server_conf.get("admin_service")
+    options["keypair"] = keypair
+    options["templates"] = templates_conf
+    options["autoreload"] = server_conf.get("autoreload")
 
-    # Asignamos el pool al núcleo para interactuar con MySQL
-    core_init.pool_object = pool_object
+    logging.warning(_("Iniciando el núcleo..."))
 
-    # Asignamos el control de procesos y subprocesos para interactuar de
-    # manera segura y eficiente con éstos
-    core_init.procs = proc_control.ProcControl(
-        server_conf.get('init_proc'), server_conf.get('clearProcs')
+    handler = core.start(
+        server_conf.get("lhost"),
+        server_conf.get("lport"),
+        **options
 
     )
 
-    # Se especifican cuántos procesos se desea usar para las operaciones paralelas en
-    # el cifrado híbrido
-    hibrid.processes = server_conf.get('max_workers')
+    ioloop.start()
 
-    logging.warning('Iniciando el núcleo...')
+except KeyboardInterrupt:
+    pass
 
-    core.start(server_conf.get('lhost'),
-               server_conf.get('lport'))
+except Exception as err:
+    logging.exception(_("Ocurrió una excepción inesperada:"))
 
-if __name__ == '__main__':
-    # Iniciamos el núcleo
-    try:
-        main()
-        tornado.ioloop.IOLoop().current().start()
+finally:
+    ioloop.stop()
 
-    except KeyboardInterrupt:
-        core_init.procs.setTarget('processes')
-        core_init.procs.clear()
-        tornado.ioloop.IOLoop().current().stop()
+    if (handler is not None):
+        try:
+            handler.procs.ProcStream.removeall()
+        
+        except:
+            logging.exception(_("Ocurrió una excepción cerrando los archivos abiertos"))
+        
+        try:
+            handler.procs.ProcControl.setTarget("processes")
+            handler.procs.ProcControl.clear()
 
-        # Tratamos de salir mandando una señal <SIGTERM> o <SIGKILL> según lo decida el usuario
-        safeQuit()
+            # Tratamos de salir mandando una señal <SIGTERM> o <SIGKILL> según lo decida el usuario
+            safeQuit(handler.procs.ProcControl)
 
-    except Exception as err:
-        logging.exception('Ocurrió una excepción inesperada:')
+        except:
+            logging.exception(_("Ocurrió una excepción cerrando los procesos aún abiertos"))
 
-    # Restauramos la configuración del proxy
-    addproxy.stop()
+# Restauramos la configuración del proxy
+addproxy.stop()
 
-    logging.info('Terminado: %d', os.getpid())
+logging.info(_("Terminado: %d"), os.getpid())
 
-    # Y salimos :p
-    sys.exit(0)
+# Y salimos :p
+sys.exit(0)

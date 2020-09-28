@@ -1,105 +1,244 @@
 import os
-import hashlib
 import logging
+from typing import Optional, Union
+
 import aiofiles
-import tornado.escape
 
 from modules.Infrastructure import exceptions
 
 from utils.Crypt import hibrid
+from utils.extra import create_translation
+from utils.General import parse_config
+
+translation_config = parse_config.parse()["Languages"]
+
+_ = create_translation.create(
+    "parser",
+    translation_config["localedir"],
+    translation_config["language"]
+        
+)
 
 class Parser:
-    def __init__(self, init_path=None, rsa_object=None):
-        self.init_path = init_path
-        self.rsa = rsa_object
+    """
+    Crea la infraestructura de UTesla
 
-    @staticmethod
-    def __check_pubkey(pubkey_path):
-        if not (os.path.isfile(pubkey_path)):
-            raise exceptions.PublicKeyNotFound('Error, la clave pública "%s" no existe' % (
-                pubkey_path)
+    Attributes:
+        session: La sesión ECDH
+        user_dir: El directorio de las claves de los usuarios
+        local_key: La clave de firmado del remitente
+    
+    """
 
-            )
+    def __init__(
+        self,
+        session: "x25519_xsalsa20_poly1305MAC.InitSession",
+        local_key: bytes,
+        init_path: str = "data",
+        user_dir: str = "pubkeys"
 
-    @staticmethod
-    def __real_user_generator(user):
-        return hashlib.sha3_224(
-            user.encode()
+    ):
+        """
+        Args:
+            session:
+              La sesión ECDH
 
-        ).digest()
+            local_key:
+              La clave de firmado del remitente
 
-    def build(self, user, message, dest_key):
-        real_user = self.__real_user_generator(user)
+            init_path:
+              El prefijo de `user_dir` y `serv_dir` que indica el directorio raíz
 
-        logging.debug('Cifrando datos con el usuario "%s"...' % (user))
+            user_dir:
+              El directorio de las claves de los usuarios
+        """
+
+        self.session = session
+        self.user_dir = "%s/%s" % (
+            init_path, user_dir
         
-        return real_user + hibrid.encrypt(
-            dest_key,
-            self.rsa.export_private_key(),
-            message
-
         )
+        self.local_key = local_key
 
-    async def reply(self, user, message):
-        real_user = self.__real_user_generator(user)
+    @staticmethod
+    def __check_length(username):
+        user_length = len(username)
 
-        pubkey_path = '%s/pubkeys/%s' % (
-            self.init_path, real_user.hex()
+        if (user_length != 28) and (user_length != 56):
+            raise exceptions.InvalidRequest(_("Identificador de usuario inválido"))
 
-        )
+    def __user2hex(self, user):
+        self.__check_length(user)
 
-        logging.debug('Usando clave pública (%s) del usuario "%s" para responder...', 
-            pubkey_path, user
+        if (isinstance(user, bytes)):
+            user = user.hex()
 
-        )
+        elif (isinstance(user, str)):
+            user = os.path.basename(user)
 
-        self.__check_pubkey(pubkey_path)
+        else:
+            raise TypeError(_("Tipo de dato del usuario inválido"))
 
-        async with aiofiles.open(pubkey_path, 'rb') as pubkey_fd:
-            logging.debug('Cifrando la respuesta para el usuario "%s"', user)
+        # Como se modificó su longitud, puede que tenga errores, por lo
+        # que se debe volver a verificar.
+        self.__check_length(user)
 
-            public_key = await pubkey_fd.read()
+        return user
 
-            return hibrid.encrypt(
-                public_key,
-                self.rsa.export_private_key(),
-                message
+    @staticmethod
+    def __check_key(key_path):
+        if not (os.path.isfile(key_path)):
+            raise exceptions.PublicKeyNotFound(
+                _("Error, la clave '{}' no existe").format(key_path)
 
             )
 
-    def get_message(self, pubkey, data):
+    def reply(
+        self,
+        message: bytes,
+        *args, **kwargs
+
+    ) -> bytes:
+        """Cifra ``message`` para responder al usuario.
+
+        Esta es la contraparte de `get_message()`
+
+        Args:
+            message:
+              El mensaje a cifrar
+
+            *args:
+              Los argumentos variables para `hibrid.encrypt()`
+
+            **kwargs:
+              Los argumentos claves variables para `hibrid.encrypt()`
+
+        Returns:
+            Los datos cifrados y firmados
+        """
+
+        return hibrid.encrypt(
+                    self.local_key,
+                    self.session.destination,
+                    self.session.source.private,
+                    message,
+                    *args, **kwargs
+
+               )
+
+    async def destroy(
+        self,
+        message: bytes,
+        real_user: Union[str, bytes],
+        *args, **kwargs
+
+    ) -> bytes:
+        """Descifra la petición del usuario.
+
+        Esta es la contraparte de `build()`
+
+        Args:
+            message:
+              El mensaje a descifrar
+
+            real_user:
+              El identificador de usuario. Si es un tipo ``bytes`` se convierte
+              a una cadena hexadecimal. La longitud no puede ser diferente a
+              28 o 56 digitos.
+
+            *args:
+              Argumentos variables para `hibrid.decrypt()`
+
+            **kwargs:
+              Argumentos variables para `hibrid.decrypt()`
+
+        Returns:
+            Los datos descifrados y verificados
+        """
+
+        real_user = self.__user2hex(real_user)
+
+        key_path = os.path.join(self.user_dir, real_user)
+
+        self.__check_key(key_path)
+
+        async with aiofiles.open(key_path, "rb") as fd:
+            verify_key = await fd.read()
+
+        logging.debug(_("Descifrando datos del identificador '%s'..."), real_user)
+
         return hibrid.decrypt(
-            self.rsa.export_private_key(),
-            pubkey,
-            data
+                    verify_key,
+                    self.session.destination,
+                    self.session.source.private,
+                    message,
+                    *args, **kwargs
 
-        )
+               )
 
-    async def destroy(self, data):
-        real_user = tornado.escape.url_escape(
-            data[:28].hex()
+    def build(
+        self,
+        message: bytes,
+        *args, **kwargs
 
-        )
-        message = data[28:]
-        pubkey_path = '%s/pubkeys/%s' % (
-            self.init_path, real_user
+    ) -> bytes:
+        """Cifra para realizar una petición al servidor.
+        
+        Esta es la contraparte de `destroy()`
 
-        )
+        Args:
+            message:
+              El mensaje a cifrar
 
-        if (len(real_user) != 28*2) or (len(message) <= 0):
-            raise exceptions.InvalidRequest('¡Petición inválida!')
+            signing_key:
+              La clave de firmado
 
-        self.__check_pubkey(pubkey_path)
+            *args:
+              Argumentos variables para `hibrid.encrypt()`
 
-        async with aiofiles.open(pubkey_path, 'rb') as pubkey_fd:
-            logging.debug('Descifrando datos del identificador "%s"...', real_user)
+            **kwargs:
+              Argumentos claves variables para `hibrid.encrypt()`
 
-            public_key = await pubkey_fd.read()
+        Returns:
+            Los datos cifrados y firmados
+        """
 
-            return (
-                real_user, hibrid.decrypt(
-                self.rsa.export_private_key(),
-                public_key,
-                message)
+        return hibrid.encrypt(
+                   self.local_key,
+                   self.session.destination,
+                   self.session.source.private,
+                   message,
+                   *args, **kwargs
 
-            )
+               )
+
+    def get_message(
+        self,
+        data: bytes,
+        verify_key: bytes,
+        *args, **kwargs
+
+    ) -> bytes:
+        """Descifra la respuesta del servidor.
+
+        Esta es la contraparte de `reply()`
+
+        Args:
+            data:
+              Los datos a descifrar
+
+            verify_key:
+              La clave de verificación
+
+        Returns:
+            Los datos descifrados y verificados
+        """
+
+        return hibrid.decrypt(
+                    verify_key,
+                    self.session.destination,
+                    self.session.source.private,
+                    data,
+                    *args, **kwargs
+
+               )

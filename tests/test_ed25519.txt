@@ -1,0 +1,31 @@
+El módulo ``ed25519``
+=====================
+
+>>> from modules.Crypt import ed25519
+
+Primero se necesitan generar las claves Ed25519
+>>> keys = ed25519.to_raw()
+>>> data2sign = b"Hi! :'D"
+
+Firmamos con la clave privada
+>>> sign2verify = ed25519.sign(keys.private, data2sign)
+
+Ahora se verifica usando la clave pública
+>>> data2cmp = ed25519.verify(keys.public, sign2verify)
+
+Verificamos que no se haya modificado en el transporte (aunque pynacl nos lo fuera indicado)
+>>> assert data2cmp == data2sign
+
+Como en este caso se modifica, falla
+>>> assert data2cmp == (data2sign + b"corrupted")
+Traceback (most recent call last):
+...
+AssertionError
+
+Un atacante, como un atacante que esté oliendo el tráfico, puede además modificar a su conveniencia
+los datos que dos partes se envíen, pero si eso llegara a pasar, un error más realista que los
+anteriormente mostrados sería el siguiente:
+>>> ed25519.verify(keys.public, sign2verify + b"extra")
+Traceback (most recent call last):
+...
+nacl.exceptions.BadSignatureError: Signature was forged or corrupt

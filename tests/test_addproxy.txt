@@ -1,0 +1,32 @@
+El módulo ``addproxy``
+=====================
+
+>>> import requests
+>>> from modules.Privacy import addproxy
+
+Se configurará un proxy para poder tener una capa más de seguridad.
+
+Primero obtener nuestra dirección IP
+
+>>> src_ip = requests.get("https://ifconfig.me").text
+
+Ahora configuramos el proxy usando los parámetros por defecto (para usar el proxy de Tor).
+
+>>> addproxy.start()
+
+Obtenemos la dirección IP del proxy
+
+>>> prox_ip = requests.get("https://ifconfig.me").text
+
+Y verificamos que sean diferentes
+
+>>> assert src_ip != prox_ip
+
+Ahora se restaura
+
+>>> addproxy.stop()
+
+Y se verifica que se tenga la misma dirección IP con la que empezamos
+
+>>> src_ip_cmp = requests.get("https://ifconfig.me").text
+>>> assert src_ip == src_ip_cmp

@@ -1,0 +1,10 @@
+El módulo ``remove_badchars``
+=============================
+
+>>> from utils.extra import remove_badchars
+>>> remove_badchars.remove("//////////////////index//////////////", "/")
+'/index'
+>>> remove_badchars.remove("modules---------------------test----------------", "-")
+'modules-test'
+>>> remove_badchars.remove("localhost:17000/////////////services////sub_service/////1///2", "/")
+'localhost:17000/services/sub_service/1/2'

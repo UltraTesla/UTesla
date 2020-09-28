@@ -1,3 +1,1 @@
-__all__ = ['General', 'Crypt']
-
-from . import *
+__all__ = ["Crypt", "extra", "General"]

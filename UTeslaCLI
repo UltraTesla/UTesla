@@ -1,332 +1,303 @@
 #!/usr/bin/env python3
 
-import importlib
+import os
 import asyncio
 import logging
-import traceback
-import os
-import inspect
-import glob
-import sys
-import copy
-import contextlib
-import _io
+import pathlib
+import gettext
+import tornado.ioloop
 
-from utils.extra import create_translation
-from utils.extra import init_db
-from utils.extra import init_log
-from utils.extra import mysql_errors
-from utils.extra import logging_double
-from utils.extra import isinstance_multiple
-from utils.extra import execute_possible_coroutine
-
+from cli_utils import config
 from utils.General import parse_config
+from utils.extra import init_db
+from utils.extra import isinstance_multiple
+from utils.extra import init_log
+from utils.extra import execute_possible_coroutine
+from utils.extra import create_translation
 
 from config import defaults
 
+ioloop = tornado.ioloop.IOLoop().current()
+
+# La configuración
 settings = parse_config.parse()
-server_conf = settings['Server']
-language_conf = settings['Languages']
+server_conf = settings["Server"]
+database = server_conf.get("mysql_db")
 
-# Aplicamos todos los parches para dar poderes a logging como
-# el color y la traducción
-from utils.extra import patch_logging
+# Por si acaso un plugin necesita ser ejecutado hasta que se dicte que no (usado en ioloop, por ejemplo)
+is_persist = False
 
-patch_logging.language = language_conf.get('language')
-patch_logging.localedir = language_conf.get('localedir')
-patch_logging.apply()
+__VERSION__ = "2.0.0"
 
+_ = create_translation.create("UTeslaCLI")
+
+gettext.gettext = create_translation.create("argparse")
+    
 import argparse
 
-database = server_conf.get('mysql_db')
-
-__VERSION__ = '1.0.2'
-
-init_log.init(settings['Logging'])
+# Iniciamos la configuración para logging
+init_log.init(settings["Logging"])
 
 def print_help(parser, args):
-    if (args is None) or (hasattr(args, 'help')):
+    if (args is None) or (hasattr(args, "help")):
         parser.print_help()
         parser.exit()
 
-class ArgumentParserCustom(argparse.ArgumentParser):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.real_exit = True
-
-    def set_exit(self, real_exit):
-        self.real_exit = real_exit
-
-    def exit(self, *args, **kwargs):
-        if (self.real_exit):
-            super().exit(*args, **kwargs)
-
 async def main():
-    _ = create_translation.create(
-        'UTeslaCLI',
-        language_conf.get('localedir'),
-        language_conf.get('language')
+    global is_persist
 
-    )
+    # Usado para verificar si hay o no plugins
+    plugin_exists = False
 
-    parser = ArgumentParserCustom(add_help=False)
-    parser.set_exit(False)
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument(
-        '-h', '--help',
-        help=_('Imprimir este mensaje y salir'),
-        action='store_true'
+        "-h", "--help",
+        help=_("Imprimir este mensaje y salir"),
+        action="store_true"
 
     )
     parser.add_argument(
-        '-s', '--sql-file',
-        help=_('El archivo SQL inicial. Advertencia: No modificar si no sabe lo que hace'),
+        "-s", "--sql-file",
+        help=_("El archivo SQL inicial. Advertencia: No modificar si no sabe lo que hace"),
         default=defaults.sqlfile
 
     )
     parser.add_argument(
-        '--version',
-        action='store_const',
+        "--version",
+        action="store_const",
         const=__VERSION__,
-        help=_('muestra la versión del programa y sale')
+        help=_("muestra la versión del programa y sale")
 
     )
     parser.add_argument(
-        '--no-add-path',
-        help=_('No agregar la ruta de trabajo del complemento si existe'),
-        action='store_false'
+        "--no-add-path",
+        help=_("No agregar la ruta de trabajo del plugin si existe"),
+        action="store_false"
 
     )
     parser.add_argument(
-        '--path',
-        help=_('Rutas de trabajo arbitrarias'),
-        action='append',
+        "--path",
+        help=_("Rutas de trabajo arbitrarias"),
+        action="append",
         default=[]
 
     )
     parser.add_argument(
-        '--no-restore',
-        help=_('No restaurar el valor del "path" original, por lo seguirán '
-             'las rutas de trabajo de los complementos. ADVERTENCIA: '
-             'puede provocar comportamientos inesperados'),
-        action='store_false'
+        "--no-restore",
+        help=_("No restaurar el valor de la variable 'PATH', por lo que seguirán "
+               "las rutas de trabajo de los plugins. ADVERTENCIA: puede "
+               "provocar comportamientos inesperados"),
+        action="store_false"
 
     )
+
     parser.add_argument(
-        '--index',
-        help=_('El índice del espacio de trabajo. Útil si hay muchos'),
+        "--index",
+        help=_("El índice del espacio de trabajo. Útil si hay muchos"),
         type=int,
         default=0
 
     )
 
-    # No deseo que su muestre la información incorrecta para que
-    # no se generen conflictos con el segundo llamado a
-    # parse_args(...)
-    tmp_io_file = _io.StringIO()
+    subparsers = parser.add_subparsers(help=_("plugins actuales"))
+    list_plugins = pathlib.Path(server_conf.get("plugins")).iterdir()
 
-    # Primero se piden los argumentos pasados para usarlos antes
-    # de agregar los subparsers
-    with contextlib.redirect_stderr(tmp_io_file):
-        pre_args = parser.parse_args()
+    for plugin_path in list_plugins:
+        if not (plugin_path.is_dir()):
+            continue
 
-    subparsers = parser.add_subparsers(help=_('Complementos actuales'))
-    list_plugins = glob.glob(server_conf.get('plugins') + '/*.py')
+        if (plugin_path.as_posix().endswith("-%s" % (defaults.shared_dir_extension))):
+            continue
 
-    if (list_plugins == []):
-        logging.info('Aún no hay complementos...')
+        plugin_name = os.path.basename(plugin_path.as_posix())
+        plugin_abs = os.path.join(plugin_path.as_posix(), plugin_name)
+        plugin_module = plugin_abs + ".py"
 
-        return
+        # Si es un archivo de configuración, se ignora
+        if (plugin_abs.endswith("-%s" % (defaults.config_extension))):
+            continue
 
-    for plugin_file in list_plugins:
-        if not (os.path.isfile(plugin_file)):
-            continue # Por si acaso no es un archivo válido con una extensión válida (Como un directorio)
+        if not (os.path.isfile(plugin_module)):
+            logging.warning(_(
+                "'%s' debería estar en '%s'"
+                
+            ), plugin_module, plugin_path.as_posix())
+            continue
 
-        (plugin_name, __) = os.path.splitext(
-            os.path.basename(plugin_file)
+        if not (plugin_exists):
+            # Indicamos que hay plugins ya que estamos iterando
+            plugin_exists = True
 
+        plugin_fileconfig = "%s-%s" % (
+            plugin_abs, defaults.config_extension
+            
         )
+
+        if not (os.path.isfile(plugin_fileconfig + ".py")):
+            logging.warning(_(
+                "No hay archivo de configuración para el plugin '%s'"
+                
+            ), plugin_name)
+            continue
 
         try:
-            (plugin_path, __) = os.path.splitext(plugin_file)
-            # Guardamos los valores del path actual para remplazarlos cuando
-            # terminemos con la operación de la importación
-            aux_path = copy.copy(sys.path)
-            workspace = []
-            workspace_name = '%s-%s' % (
-                plugin_path, defaults.workspace_extension
-
-            )
-
-            if (pre_args.no_add_path) and (os.path.isdir(workspace_name)):
-                workspace.append(workspace_name)
-
-            workspaces = workspace + pre_args.path
-            workspaces_last_index = len(workspace) - 1
-
-            sys.path = workspaces + sys.path
-
-            plugin = importlib.import_module(
-                plugin_path.replace('/', '.')
-
-            )
-
-            if (pre_args.no_restore):
-                # Ahora se restaura
-                sys.path = aux_path
+            plugin_config = config.get_config(plugin_fileconfig)
 
         except Exception as err:
-            if hasattr(err, 'lineno'):
-                logging.warning('Excepción captada en el complemento "%s" (%s) en la línea "%d": %s',
-                                plugin_name, plugin_file, err.lineno, err)
-
-            else:
-                logging.warning('Excepción captada en el complemento "%s" (%s): %s',
-                                plugin_name, plugin_file, err)
-
-            logging.debug('Ocurrió una excepción en un complemento "%s":',
-                          plugin_name, exc_info=True)
-
+            logging.warning(
+                _("Excepción captada al leer el archivo de configuración del plugin '%s'"),
+                plugin_name, exc_info=True
+                
+            )
+            print()
             continue
-
-        if not (hasattr(plugin, 'information')):
-            logging.warning('El complemento "%s" no provee la información necesaria',
-                            plugin_name)
-            continue
-
-        if not (hasattr(plugin, 'MainParser')):
-            logging.warning('La función "MainParser" no se encuentra en el complemento "%s"', plugin_name)
-            continue
-
-        if (len(inspect.getfullargspec(plugin.MainParser).args) != 1):
-            logging.warning('La función "MainParser" del complemento "%s" debe tener un argumento', plugin_name)
-            continue
-
-        information = plugin.information
-
-        # Verifico que el índice no sea incorrecto
-        if (pre_args.index < 0):
-            workspace_index = 0
-
-        elif (pre_args.index > workspaces_last_index+1):
-            workspace_index = workspaces_last_index
-
-        else:
-            workspace_index = pre_args.index
-
-        information['workspaces'] = workspaces
-        information['index'] = workspace_index
-        version = information.get('version')
-        commands = information.get('commands')
-        description = information.get('description')
-        module_translation = create_translation.create(
-            '%s-module' % (plugin_name),
-            language_conf.get('localedir'),
-            language_conf.get('language')
-
-        )
 
         subparser = subparsers.add_parser(
             plugin_name,
-            help=module_translation(description),
+            help=plugin_config.get("description"),
             add_help=False
 
         )
 
         subparser.add_argument(
-            '-h', '--help', action='help', help=_('Imprimir este mensaje y salir')
+            "-h", "--help", action="help", help=_("Imprimir este mensaje y salir")
 
         )
+        
+        # Información necesaria para cuando se termine de analizar la configuración.
+        #
+        # Se coloca como un diccionario para no interferir con algún que otro parámetro
+        # cuando se le pase a la función principal del plugin.
+        subparser.set_defaults(__OPTIONS__={
+            "filename"   : plugin_abs,
+            "persist"    : plugin_config.get("persist"),
+            "workspaces" : plugin_config.get("workspaces")
+            
+        })
 
-        subparser.set_defaults(func=plugin.MainParser)
-
-        if (version is not None):
+        if (plugin_config.get("version") is not None):
             subparser.add_argument(
-                '--version',
-                action='version',
-                version=version,
-                help=_('muestra la versión del programa y sale')
+                "--version",
+                action="version",
+                version=plugin_config.get("version"),
+                help=_("muestra la versión del programa y sale")
 
             )
 
-        if (commands is not None):
-            if not (isinstance(commands, list)):
-                logging.warning('¡Los parámetros a analizar del complemento "%s" no están siguiendo un tipo de dato válido!',
-                                plugin_name)
-                continue
+        for command in plugin_config.get("commands"):
+            for group_name, params in command.items():
+                try:
+                    isinstance_multiple.instance_by((group_name, params), (str, list))
 
-            for command in commands:
-                for group_name, params in command.items():
+                except AssertionError:
+                    logging.warning(_(
+                        "El tipo de dato del nombre del grupo '%s' o "
+                        "el de los parámetros de éste en el plugin "
+                        "'%s' no es correcto" 
+                        
+                    ), group_name, plugin_name)
+
+                    break
+
+                if (group_name.lower() in ("optionals", "positionals")):
+                    parser_obj = subparser
+
+                else:
+                    parser_obj = subparser.add_argument_group(
+                        group_name
+
+                    )
+
+                for n, param in enumerate(params, 1):
+                    if not (isinstance(param, dict)):
+                        logging.warning(_(
+                            "El tipo de dato de los argumentos identificados "
+                            "por el número '%d' no son correctos en el grupo "
+                            "'%s' sobre el plugin '%s'" 
+                            
+                        ), n, group_name, plugin_name)
+                        break
+
                     try:
-                        isinstance_multiple.instance_by([group_name, params], [str, list])
+                        args = param.pop("args")
 
-                    except AssertionError:
-                        logging.warning('El tipo de dato del nombre del grupo "%s" o el de los parámetros de éste en el complemento "%s" no es correcto',
-                                        group_name, plugin_name)
+                    except KeyError:
+                        logging.warning(_(
+                            "¡Los parámetros del grupo '%s' en el plugin '%s' "
+                            "no cuentan con una clave necesaria!" 
+                            
+                        ), group_name, plugin_name)
+                        break
+
+                    try:
+                        if (param.get("help")):
+                            param["help"] = param.get("help")
+
+                        parser_obj.add_argument(*args, **param)
+
+                    except Exception as err:
+                        logging.exception(
+                            _("Ocurrió una excepción al agregar el plugin '%s'"), plugin_name
+                            
+                        )
 
                         break
 
-                    if (group_name.lower() in ('optionals', 'positionals')):
-                        parser_obj = subparser
+    if not (plugin_exists):
+        logging.info(_("Aún no hay plugins..."))
+        return
 
-                    else:
-                        parser_obj = subparser.add_argument_group(
-                            module_translation(group_name)
-
-                        )
-
-                    for n, param in enumerate(params, 1):
-                        if not (isinstance(param, dict)):
-                            logging.warning('El tipo de dato de los argumentos identificados por el número "%d" no son correctos en el grupo "%s" sobre el complemento "%s"',
-                                            n, group_name, plugin_name)
-                            break
-
-                        try:
-                            args = param.pop('args')
-
-                        except KeyError:
-                            logging.warning('¡Los parámetros del grupo "%s" en el complemento "%s" no cuentan con una clave necesaria!',
-                                            group_name, plugin_name)
-                            break
-
-                        try:
-                            if (param.get('help')):
-                                param['help'] = module_translation(
-                                    param.get('help')
-
-                                )
-
-                            parser_obj.add_argument(*args, **param)
-
-                        except Exception as err:
-                            logging.warning('Ocurrió una excepción al agregar el complemento "%s": %s',
-                                            plugin_name, err)
-                            break
-
-    parser.set_exit(True)
     args = parser.parse_args()
 
     if (args.version):
         print(args.version)
         sys.exit(0)
 
-    if not (hasattr(args, 'func')):
+    if not (hasattr(args, "__OPTIONS__")):
         print_help(parser, None)
 
     # Primero se ejecutan las instrucciones SQL
     init_db.init(database, args.sql_file)
 
-    await execute_possible_coroutine.execute(
-        args.func, args
+    # Ahora obtenemos las opciones del plugin
+    options = args.__OPTIONS__
 
+    function = config.get_function(
+        (
+            args.no_add_path,
+            args.no_restore,
+            args.index,
+            args.path
+            
+        ),
+        options
+        
     )
 
-if __name__ == '__main__':
-    # Se ejecuta como una corutina por si acaso un plugin así lo
-    # requiera
+    if (options.get("persist")):
+        is_persist = True
+
+        ioloop.add_callback(function, args)
+
+    else:
+        await execute_possible_coroutine.execute(
+            function, args
+
+        )
+
+if __name__ == "__main__":
     try:
         loop = asyncio.get_event_loop()
         loop.run_until_complete(main())
 
+        if (is_persist):
+            ioloop.start()
+
+    except KeyboardInterrupt:
+        pass
+
     except Exception as err:
-        logging_double.log('Ocurrió un error inesperado en alguna operación: %s', err)
+        logging.exception(_("¡Excepción captada en tiempo de ejecución!"))
+
+    finally:
+        ioloop.stop()

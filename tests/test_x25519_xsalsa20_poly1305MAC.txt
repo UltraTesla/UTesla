@@ -1,0 +1,18 @@
+El módulo ``x25519_xsalsa20_poly1305MAC``
+========================================
+
+>>> from modules.Crypt import x25519_xsalsa20_poly1305MAC as scheme
+
+Primero alice y bob deben generar su par de claves
+>>> ecdh_bob = scheme.to_raw()
+>>> ecdh_alice = scheme.to_raw()
+
+Ahora alice y bob deben intercambiar las claves públicas e iniciar una sesión DH
+>>> bob_session = scheme.InitSession(ecdh_alice.public, ecdh_bob.private)
+>>> alice_session = scheme.InitSession(ecdh_bob.public, ecdh_alice.private)
+
+Una vez inician sesión, pueden intercambiar datos
+>>> data = b"Hi! :'D"
+>>> bob_data = bob_session.encrypt(data)
+>>> alice_data = alice_session.decrypt(bob_data)
+>>> assert data == alice_data

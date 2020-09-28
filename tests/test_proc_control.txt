@@ -1,0 +1,37 @@
+El módulo ``proc_control``
+=========================
+
+>>> import time
+>>> from utils.General import proc_control
+>>> proc = proc_control.ProcControl("processes")
+
+>>> def foo():
+... 	import time
+... 	time.sleep(5)
+... 	print("Foo(...)")
+
+>>> def bar():
+... 	import time
+... 	print("Bar(...)")
+... 	time.sleep(5)
+
+Podemos crear un proceso/subproceso, pero en caso de no ajustar localmente, se usará el valor global.
+
+En este caso se crearán procesos:
+
+>>> proc.create(foo)
+'Process-1'
+>>> proc.create(bar)
+'Process-2'
+
+Ahora lo ajustamos arbitrariamente
+
+>>> proc.create(foo, target="threads")
+'Thread-1'
+>>> proc.create(bar, target="threads")
+Bar(...)
+'Thread-2'
+
+Pero si no se han terminado
+
+>>> proc.clear()
