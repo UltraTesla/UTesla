@@ -723,7 +723,7 @@ class MainHandler(tornado.tcpserver.TCPServer):
             exception = _("¡La verificación del mensaje no es correcta!")
 
         except exceptions.PublicKeyNotFound:
-            exception = _("¡El usuario '{}' no existe!").format(control.request.real_user)
+            exception = _("¡El usuario '{}' no existe!").format(control.request.real_user.hex())
 
         except asyncio.TimeoutError:
             exception = _("Ha concluido el tiempo de espera para la recepción de datos")
