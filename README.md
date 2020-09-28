@@ -24,7 +24,7 @@ Entre los fallos arreglados:
 
 ## Wiki y documentación
 
-* TODO
+* [Instalación](https://github.com/UltraTesla/UTesla/wiki/Instalación)
 
 ## TODO
 
