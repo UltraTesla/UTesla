@@ -33,5 +33,6 @@ Entre los fallos arreglados:
 
 * Probarlo en más sistemas unix-like y otros, como Windows.
 * Transferir mucho más rápido los datos de gran magnitud
+* Subirlo a AUR
 
 ~ DtxdF
