@@ -27,10 +27,19 @@ Entre los fallos arreglados:
 * [Instalación](https://github.com/UltraTesla/UTesla/wiki/Instalación)
 * [Introducción](https://github.com/UltraTesla/UTesla/wiki/Introducci%C3%B3n)
 * [Tipos de usuarios](https://github.com/UltraTesla/UTesla/wiki/Tipos-de-usuarios)
+* [Cómo crear un servicio](https://github.com/UltraTesla/UTesla/wiki/Cómo-crear-un-servicio)
+* [Cómo crear un «plugin»](https://github.com/UltraTesla/UTesla/wiki/C%C3%B3mo-crear-un-%C2%ABplugin%C2%BB)
+* [Cómo crear un cliente](https://github.com/UltraTesla/UTesla/wiki/C%C3%B3mo-crear-un-cliente)
+* [Tipos de servicios](https://github.com/UltraTesla/UTesla/wiki/Tipos-de-servicios)
+* [¿Qué es ProtoTesla?](https://github.com/UltraTesla/UTesla/wiki/%C2%BFQu%C3%A9-es-ProtoTesla%3F)
+* [El controlador](https://github.com/UltraTesla/UTesla/wiki/El-controlador)
+
+Wiki: https://github.com/UltraTesla/UTesla/wiki
 
 ## TODO
 
 * Probarlo en más sistemas unix-like y otros, como Windows.
 * Transferir mucho más rápido los datos de gran magnitud
+* Subirlo a AUR
 
 ~ DtxdF
