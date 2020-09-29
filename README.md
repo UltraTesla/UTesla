@@ -26,6 +26,7 @@ Entre los fallos arreglados:
 
 * [Instalación](https://github.com/UltraTesla/UTesla/wiki/Instalación)
 * [Introducción](https://github.com/UltraTesla/UTesla/wiki/Introducci%C3%B3n)
+* [Tipos de usuarios](https://github.com/UltraTesla/UTesla/wiki/Tipos-de-usuarios)
 
 ## TODO
 
