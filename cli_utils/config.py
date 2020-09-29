@@ -99,7 +99,7 @@ def get_function(work_options, options):
     target.extend(workspaces)
     target.extend(path)
 
-    last_index = len(target)
+    last_index = len(target)-1
 
     if (arg_index < 0):
         options["index"] = 0
