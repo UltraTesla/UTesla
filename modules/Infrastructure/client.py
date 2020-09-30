@@ -2,7 +2,7 @@ import logging
 import hashlib
 import asyncio
 
-from typing import Optional, Any, Tuple, Union
+from typing import Optional, Any, Tuple, Union, Dict
 
 import aiofiles
 import tornado.tcpclient
@@ -397,6 +397,7 @@ async def simple_client(
     private_key: Optional[bytes] = None,
     max_buffer_size: Optional[int] = None,
     uteslaclient: Optional[Union[object, "tornado.tcpclient.TCPClient"]] = None,
+    params: Dict[str, Any] = {},
     *args, **kwargs
 
 ) -> Tuple["UTeslaStreamControl", Optional[Union[object, "tornado.tcpclient.TCPClient"]], "tornado.iostream.IOStream"]:
@@ -436,6 +437,11 @@ async def simple_client(
 
         uteslaclient:
           Un objeto `tornado.tcpclient.TCPClient` o derivado de éste.
+          Si se usa un objeto diferente a UTeslaClient, `timewait` y `retry` se ignoran.
+
+        params:
+          Parámetros para la corutina `connect` en `tornado.tcpclient.TCPClient`
+          o derivado de éste.
 
         *args:
           Argumentos variables para `UTeslaStreamControl`
@@ -468,12 +474,16 @@ async def simple_client(
     if (max_buffer_size is None):
         max_buffer_size = config["Client"]["max_buffer_size"]
 
+    # Estos parámetros son válidos para UTeslaClient
+    if (isinstance(tcpclient, UTeslaClient)):
+        params["timewait"] = timewait
+        params["retry"] = retry
+
     stream = await tcpclient.connect(
         host,
         port,
-        timewait = timewait,
-        retry = retry,
-        max_buffer_size = max_buffer_size
+        max_buffer_size = max_buffer_size,
+        **params
 
     )
 
