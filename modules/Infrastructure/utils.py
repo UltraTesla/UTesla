@@ -438,7 +438,7 @@ class MainCalls(MainParameters):
         keypair: Union[Tuple[bytes, bytes], "Ed25519()"],
         init_path: str = options.INIT_PATH,
         user_data: str = options.USER_DATA,
-        request: "Request()" = None,
+        request: Optional["Request()"] = None,
         end_chunk: int = options.END_CHUNK,
         user_length: int = options.USER_LENGTH
         
@@ -465,7 +465,7 @@ class MainCalls(MainParameters):
     async def write_status(
         self,
         code: int,
-        status: str = None,
+        status: Optional[str] = None,
         message: Any = None,
         *args, **kwargs
         
@@ -482,7 +482,7 @@ class MainCalls(MainParameters):
     async def write(self, *args, **kwargs) -> None:
         raise NotImplementedError()
 
-    async def recv_data(self, size: int, *, timeout: int = None) -> Any:
+    async def recv_data(self, size: int, *, timeout: Optional[int] = None) -> Any:
         fut = self.stream.read_until(self.end_chunk, size + self.__end_length)
 
         if (timeout is None) or (timeout <= 0):
@@ -520,7 +520,7 @@ class MainCalls(MainParameters):
         if (self.parse is None) or (self.__keys is None):
             raise RuntimeError(_("Es necesario definir la sesión"))
 
-    async def shareKey(self, signingKey: bytes = None) -> None:
+    async def shareKey(self, signingKey: Optional[bytes] = None) -> None:
         if (self.__shared):
             self.__shared = False
 
@@ -541,7 +541,7 @@ class MainClient(MainCalls):
         # Usado por el cliente para enviar el nombre de usuario al servidor
         self.__initial = True
 
-    async def shareUsername(self, real_user: bytes = None) -> None:
+    async def shareUsername(self, real_user: Optional[bytes] = None) -> None:
         if (self.__initial):
             self.__initial = False
 
@@ -550,7 +550,7 @@ class MainClient(MainCalls):
 
             await self.write_data(real_user)
 
-    async def write(self, data: Any, headers: dict = None, *args, **kwargs) -> None:
+    async def write(self, data: Any, headers: Optional[dict] = None, *args, **kwargs) -> None:
         self.check_not_defined_session()
 
         if (headers is None):
@@ -566,7 +566,7 @@ class MainClient(MainCalls):
                 
         )
 
-    async def read(self, verifyKey: bytes, size: int, *args, timeout: int = None, **kwargs) -> Any:
+    async def read(self, verifyKey: bytes, size: int, *args, timeout: Optional[int] = None, **kwargs) -> Any:
         self.check_not_defined_session()
 
         return self.parse.get_message(
