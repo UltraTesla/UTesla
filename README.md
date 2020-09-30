@@ -42,4 +42,22 @@ Wiki: https://github.com/UltraTesla/UTesla/wiki
 * Transferir mucho más rápido los datos de gran magnitud
 * Subirlo a AUR
 
+## Bugs
+
+Al momento de importar un módulo o librería ya sea en un servicio o un «*plugin*» se necesita asegurar que no ha sido importado anteriormente. Esto se puede saber de la siguiente manera:
+
+```python
+import sys
+print("<módulo o librería>" in sys.modules)
+```
+
+Para recrear un ejemplo más realista de lo anteriormente mostrado usando una librería fictia llamada "**foo**":
+
+```python
+import sys
+print("foo" in sys.modules)
+```
+
+**Una incongruencia que estoy tratando de solucionar.**
+
 ~ DtxdF
