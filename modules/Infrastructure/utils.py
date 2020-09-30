@@ -705,6 +705,7 @@ async def is_service_allowed(token: str, pool: object, path: str) -> bool:
     else:
         (regex,) = regex
 
+
     if (re.match(regex, path)):
         return True
 
@@ -768,10 +769,13 @@ def is_admin(handler: object) -> bool:
 
         return False
 
-    if (_has_params(handler_access)) or (_has_params(handler_remote)):
+    # Para ahorrar código usando el operador ternario
+    len_access_args = _has_params(handler_access)
+
+    if (len_access_args) or (_has_params(handler_remote)):
         logging.warning(
             _("El método '%s' del servicio administrativo no debe recibir ni argumentos ni argumentos clave"),
-            defaults.access_method if (len_access_args > 0) else \
+            defaults.access_method if (len_access_args) else \
             defaults.remote_method
             
         )
