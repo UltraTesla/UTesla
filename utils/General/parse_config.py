@@ -1,88 +1,45 @@
+import os
+import logging
 import configparser
+import gettext
 
 from config import defaults
 
-def parse() -> dict:
+cache = {}
+
+logging.basicConfig(format="%(levelname)s: %(message)s")
+
+def parse(use_cache: bool = True) -> dict:
+    """Parsear la configuración
+    
+    Args:
+        use_cache:
+          De forma global se almacena un diccionario que contiene toda la configuración,
+          si ``use_cache`` es **True** se retorna ese diccionario en vez de parsear el
+          archivo de configuración por cada invocación, lo cual mejoraría el rendimiento.
+
+    Returns:
+        Un diccionario con la configuración parseada.
+    """
+
+    global cache
+
+    if (use_cache) and (cache):
+        return cache
+
     config = configparser.ConfigParser(
         defaults.defaults,
-        empty_lines_in_values=False
+        empty_lines_in_values = False,
+        interpolation = None
 
     )
     config.read(defaults.fileconfig)
 
-    parsed = {}
-
-    dictionary = {
-        'Logging'      : [
-            ('log_config', str),
-            ('critical', str),
-            ('error', str),
-            ('warning', str),
-            ('info', str),
-            ('debug', str)
-
-        ],
-        
-        'Client'       : [
-            ('connect_timeout', float),
-            ('request_timeout', float),
-            ('follow_redirects', bool),
-            ('max_redirects', int)
-
-        ],
-        
-        'Server'       : [
-            ('lhost', str),
-            ('lport', int),
-            ('hash', str),
-            ('access_control_allow_origin', str),
-            ('mysql_db', str),
-            ('max_workers', int),
-            ('plugins', str),
-            ('user_server', str),
-            ('complements', str),
-            ('white_list', str),
-            ('use_ssl', bool),
-            ('ssl_key', str),
-            ('ssl_cert', str),
-            ('init_path', str),
-            ('pub_key', str),
-            ('priv_key', str),
-            ('init_proc', str),
-            ('clearProcs', float)
-
-        ],
-        
-        'Proxy'        : [
-            ('proxy_type', str),
-            ('addr', str),
-            ('port', int),
-            ('rdns', bool),
-            ('username', str),
-            ('password', str),
-            ('use_proxy', bool)
-
-        ],
-        
-        'Crypt Limits' : [
-            ('time_cost', int),
-            ('memory_cost', int),
-            ('parallelism', int),
-            ('token_length', int),
-            ('rsa_key_length', int)
-
-        ],
-
-        'Languages'    : [
-            ('language', str),
-            ('localedir', str)
-
-        ]
-
-    }
-
-    for section, values in dictionary.items():
+    for section, values in defaults.dictionary.items():
         for (value, type) in values:
+            default = defaults.defaults[section][value]
+            env_default = os.getenv("UTESLA_{}_{}".format(section, value))
+
             if (type == bool):
                 convert = config.getboolean
 
@@ -95,15 +52,34 @@ def parse() -> dict:
             else:
                 convert = config.get
 
-            if not (section in parsed):
-                parsed[section] = {}
+            if not (section in cache):
+                cache[section] = {}
 
-            aux = parsed[section][value] = convert(
-                section, value, fallback=defaults.defaults[section][value]
+            try:
+                aux = convert(
+                    section, value, fallback=env_default or default
 
-            )
+                )
+
+            except Exception as err:
+                logging.exception(
+                    "Exception captada al analizar la sección '%s' y el valor de clave '%s' %s",
+                    section, value
+                        
+                )
+
+                aux = default
+
+                logging.warning(
+                    "Usando el valor '%s' en la clave '%s' sobre la sección '%s'",
+                    aux, value, section
+                    
+                )
+
+            finally:
+                cache[section][value] = aux
 
             if (aux in defaults.default_dictionary):
-                parsed[section][value] = defaults.default_dictionary[aux]
+                cache[section][value] = defaults.default_dictionary[aux]
 
-    return parsed
+    return cache

@@ -1,74 +1,79 @@
 import msgpack
-import concurrent.futures
-from secrets import token_bytes
 
-from modules.Crypt import aes_gcm
-from modules.Crypt import rsa
+from modules.Crypt import x25519_xsalsa20_poly1305MAC
+from modules.Crypt import ed25519
+from utils.Crypt import options
 
-# Se coloca el alias 'HASH' para que se modifique con facilidad en
-# cada importación de 'hibrid'. Pero éste debe seguir la siguiente
-# sintaxis: <HASH MODULE>.new(...)
-from Crypto.Hash import SHA3_384 as HASH
+def encrypt(
+    signingKey: bytes,
+    publicKey: bytes,
+    secretKey: bytes,
+    data: bytes,
+    is_packed: bool = options.IS_PACKED
 
-from utils.extra import execute_multi_workers
+) -> bytes:
+    """Cifra y firma un mensaje
+    
+    Args:
+        signingKey:
+          La clave para firmar
 
-processes = 0
+        publicKey:
+          La clave pública del destinatario
 
-def _rsa(pubKey: rsa.KeyT,
-         privKey: rsa.KeyT,
-         data: rsa.Message,
-         enc: bool = True):
-    obj = rsa.Rsa(HASH)
+        secretKey:
+          La clave secreta
 
-    obj.import_public_key(pubKey)
-    obj.import_private_key(privKey)
+        data:
+          Los datos a cifrar
 
-    if (enc):
-        return obj.encrypt_and_sign(pubKey, data)
+        is_packed:
+          Usar o no `msgpack`
+
+    Returns:
+        Los datos cifrados y firmados
+    """
+
+    scheme = x25519_xsalsa20_poly1305MAC.InitSession(publicKey, secretKey)
+
+    return ed25519.sign(signingKey, scheme.encrypt(
+        data if not (is_packed) else msgpack.dumps(data)
+        
+    ))
+
+def decrypt(
+    verifyKey: bytes,
+    publicKey: bytes,
+    secretKey: bytes,
+    data: bytes,
+    is_packed: bool = options.IS_PACKED
+
+) -> bytes:
+    """Descifra y verifica el mensaje
+
+    Args:
+        verifyKey:
+            La clave de verificación
+
+        publickey:
+            La clave pública del destinatario
+
+        secretKey:
+            La clave secreta
+
+        data:
+            Los datos a descifrar
+
+    Returns:
+        Los datos verificados y descifrados
+    """
+
+    scheme = x25519_xsalsa20_poly1305MAC.InitSession(publicKey, secretKey)
+    
+    result = scheme.decrypt(ed25519.verify(verifyKey, data))
+
+    if (is_packed):
+        return msgpack.loads(result)
 
     else:
-        return obj.decrypt_and_verify(pubKey, data)
-
-def _aes(key: aes_gcm.KeyT,
-         data: aes_gcm.DataT,
-         enc: bool = True) -> bytes:
-    obj = aes_gcm.Aes(key)
-
-    if (enc):
-        return obj.encrypt(data)
-
-    else:
-        return obj.decrypt(data)
-
-def _encrypt(pubKey: rsa.KeyT,
-            privKey: rsa.KeyT,
-            data: rsa.Message) -> bytes:
-    # Agregar un executor usando concurrent.futures
-    data = msgpack.dumps(data)
-    session_key = token_bytes(aes_gcm.AES.block_size*2)
-    enc_key = _rsa(pubKey, privKey, session_key)
-    enc_data = _aes(session_key, data)
-
-    return enc_key + enc_data
-
-def _decrypt(privKey: rsa.KeyT,
-            pubKey: rsa.KeyT,
-            data: rsa.Message) -> bytes:
-    key_size = rsa.Rsa().import_public_key(pubKey, False).size_in_bytes() * 2
-    enc_key = data[:key_size]
-    dec_key = _rsa(pubKey, privKey, enc_key, False)
-    enc_data = data[key_size:]
-
-    return msgpack.loads(_aes(dec_key, enc_data, False))
-
-def encrypt(*args, **kwargs):
-    return execute_multi_workers.execute(
-        _encrypt, processes, *args, **kwargs
-
-    )
-
-def decrypt(*args, **kwargs):
-    return execute_multi_workers.execute(
-        _decrypt, processes, *args, **kwargs
-
-    )
+        return result

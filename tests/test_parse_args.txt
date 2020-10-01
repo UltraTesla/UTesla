@@ -1,0 +1,31 @@
+El módulo ``parse_args``
+========================
+
+>>> from utils.extra import parse_args
+>>> def foo():
+... 	print("Foo(...)")
+>>> parse_args.execute_function(foo)
+Foo(...)
+
+Al llamar a una función de forma ordinaria, pero con los tipos incorrectos
+en los argumentos puede ocasionar errores.
+
+>>> def sum(x: int, y: int, /):
+... 	return 0 + x + y
+>>> sum("1", "2")
+Traceback (most recent call last):
+...
+TypeError: unsupported operand type(s) for +: 'int' and 'str'
+
+Pero si usamos parse_args:
+
+>>> parse_args.execute_function(sum, dict(x="1", y="2"))
+3
+
+Ya que hace uso de las anotaciones para convertir datos.
+Aunque si un dato no se puede convertir, genera una excepción:
+
+>>> parse_args.execute_function(sum, dict(x="a", y="b"))
+Traceback (most recent call last):
+...
+utils.extra.parse_args.ConvertionException: Error en la conversión de tipos

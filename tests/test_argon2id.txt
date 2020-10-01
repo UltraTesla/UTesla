@@ -1,0 +1,18 @@
+Probando el potencial de argon2
+===============================
+
+>>> import modules.Infrastructure.exceptions
+>>> from utils.extra import generate_hash, verify_hash
+>>> password = "Contraseña insegura"
+>>> secure_password = generate_hash.generate(password, 2, 102400, 8)
+>>> verify_hash.verify(secure_password, password)
+True
+>>> verify_hash.verify(secure_password, "Contraseña incorrecta")
+Traceback (most recent call last):
+...
+argon2.exceptions.VerifyMismatchError: The password does not match the supplied hash
+>>> crypt_limits = {"time_cost" : 2, "memory_cost" : 102400, "parallelism" : 8}
+>>> secure_password = generate_hash.generate(password, 3, 102401, 9, crypt_limits)
+Traceback (most recent call last):
+...
+modules.Infrastructure.exceptions.LimitsExceeded: Los límites pre-configurados no permiten seguir con la operación

@@ -1,7 +1,20 @@
 import argon2
 import logging
 
-def verify(hash2text, password):
+def verify(hash2text: str, password: str) -> bool:
+    """Verifica si una contraseña es correcta
+    
+    Args:
+        hash2text:
+          El hash generado por argon2 sobre la contraseña
+
+        password:
+          La contraseña a verificar
+
+    Returns:
+        **True** si la contraseña es correcta
+    """
+
     hash_params = argon2.extract_parameters(hash2text)
     hash_func = argon2.PasswordHasher(
         hash_params.time_cost,
@@ -12,7 +25,5 @@ def verify(hash2text, password):
         type=hash_params.type
 
     )
-
-    logging.debug('Verificando la validez de la contraseña...')
 
     return hash_func.verify(hash2text, password)

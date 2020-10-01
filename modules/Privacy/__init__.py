@@ -1,3 +1,1 @@
-__all__ = ['addproxy']
-
-from . import addproxy
+__all__ = ["addproxy"]

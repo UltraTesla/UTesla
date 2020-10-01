@@ -1,0 +1,18 @@
+El módulo ``proc_stream``
+=========================
+
+>>> from utils.General import proc_stream
+>>> proc = proc_stream.ProcStream()
+>>> file1 = open("/tmp/test.1.txt", "w")
+>>> file2 = open("/tmp/test.2.txt", "w")
+>>> file3 = open("/tmp/test.3.txt", "w")
+>>> proc.add_stream(file1, "test1")
+>>> proc.add_stream(file2, "test2")
+>>> proc.add_stream(file3, "test3")
+>>> file1.write("Uno")
+3
+>>> file2.write("Dos")
+3
+>>> file3.write("Tres")
+4
+>>> proc.removeall()

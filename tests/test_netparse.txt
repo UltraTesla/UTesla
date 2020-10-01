@@ -1,0 +1,14 @@
+El módulo ``netparse``
+=====================
+
+>>> from utils.extra import netparse
+>>> netparse.parse("localhost:4444/service")
+Network(address='localhost', port=4444, path='/service')
+>>> netparse.parse("localhost")
+Network(address='localhost', port=17000, path='/')
+>>> netparse.parse("localhost:abc")
+Traceback (most recent call last):
+...
+ValueError: Puerto inválido
+>>> netparse.parse("127.0.0.1:1010", default_path='generate_token')
+Network(address='127.0.0.1', port=1010, path='/generate_token')

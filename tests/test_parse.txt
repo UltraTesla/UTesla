@@ -1,0 +1,59 @@
+El módulo ``parser``
+====================
+
+>>> import os
+>>> import asyncio
+>>> import hashlib
+>>> import tempfile
+>>> from modules.Infrastructure import parse
+>>> from modules.Crypt import ed25519
+>>> from modules.Crypt import x25519_xsalsa20_poly1305MAC as scheme
+
+Configuramos primero las claves ed25519 para el firmado y la verificación
+
+>>> bob_keys = ed25519.to_raw()
+>>> alice_keys = ed25519.to_raw()
+
+Ahora configuramos la sesión ECDH
+
+>>> ecdh_bob = scheme.to_raw()
+>>> ecdh_alice = scheme.to_raw()
+>>> bob_session = scheme.InitSession(ecdh_alice.public, ecdh_bob.private)
+>>> alice_session = scheme.InitSession(ecdh_bob.public, ecdh_alice.private)
+
+Y creamos la infraestructura de Ultra Tesla
+
+>>> tempdir = tempfile.gettempdir()
+>>> user_data = os.path.join(tempdir, "pubkeys")
+>>> os.makedirs(user_data, exist_ok=True)
+>>> alice_real_user = hashlib.sha3_224(b"alice").hexdigest()
+>>> open(os.path.join(user_data, alice_real_user), "wb").write(alice_keys.public)
+32
+>>> bob_proto_tesla_session = parse.Parser(bob_session, bob_keys.private, tempdir, "pubkeys")
+>>> alice_proto_tesla_session = parse.Parser(alice_session, alice_keys.private, tempdir, "pubkeys")
+
+Alice (o el cliente) construye su petición para contactarse con Bob (o el servidor)
+
+>>> alice_data = b"Hi, my name is Alice :D"
+>>> request = alice_proto_tesla_session.build(alice_data)
+
+Bob destruye (creo que no es el término más apropiado, jeje) la petición para descifrarla
+
+>>> alice_data_decrypt = asyncio.run(bob_proto_tesla_session.destroy(request, alice_real_user))
+
+Y comparamos
+
+>>> assert alice_data == alice_data_decrypt
+
+Ahora Bob desea contactarse o responderle a Alice
+
+>>> bob_data = b"Hi, my name is Bob :D"
+>>> response = bob_proto_tesla_session.reply(bob_data)
+
+Alice lo recibe y descifra
+
+>>> message = alice_proto_tesla_session.get_message(response, bob_keys.public)
+
+Y lo comparamos nuevamente
+
+>>> assert bob_data == message

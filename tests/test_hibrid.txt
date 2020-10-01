@@ -1,0 +1,14 @@
+El módulo ``hibrid``
+===================
+
+>>> from modules.Crypt import x25519_xsalsa20_poly1305MAC as scheme
+>>> from modules.Crypt import ed25519
+>>> from utils.Crypt import hibrid
+>>> ecdh_bob = scheme.to_raw()
+>>> ecdh_alice = scheme.to_raw()
+>>> bob_keys = ed25519.to_raw()
+>>> alice_keys = ed25519.to_raw()
+>>> bob_data = b"Hi, my name is Bob :'D"
+>>> bob_encrypt = hibrid.encrypt(bob_keys.private, ecdh_alice.public, ecdh_bob.private, bob_data)
+>>> bob_data_cmp = hibrid.decrypt(bob_keys.public, ecdh_bob.public, ecdh_alice.private, bob_encrypt)
+>>> assert bob_data == bob_data_cmp

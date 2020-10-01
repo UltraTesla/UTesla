@@ -3,37 +3,35 @@
 	"disable_existing_loggers" : false,
 	"formatters" : {
 		"default" : {
-			"format"    : "%(levelname)s %(message)s",
-			"datefmt"   : "%H:%M:%S"
+			"format"    : "%(levelname)s %(message)s"
 
 		},
-		"debug" : {
-			"format"    : "[%(asctime)s] [%(levelno)s]: %(message)s",
+		"debug"   : {
+			"format"    : "%(levelname)s (%(name)s): [%(asctime)s] - %(module)s:%(funcName)s:%(lineno)d: %(message)s",
 			"datefmt"   : "%Y-%m-%d - %H:%M:%S"
 
 		}
 
 	},
-	"handlers" : {
+	"handlers"   : {
 		"default" : {
-			"level"     : "INFO",
+			"level"     : "NOTSET",
 			"class"     : "logging.StreamHandler",
 			"formatter" : "default"
 
 		},
-		"debug" : {
-			"level"     : "DEBUG",
+		"debug"   : {
+			"level"     : "NOTSET",
 			"class"     : "logging.handlers.RotatingFileHandler",
 			"formatter" : "debug",
 			"filename"  : "logs/UTesla.log"
 
 		}
-
 	},
-	"loggers"  : {
+	"loggers"    : {
 		"" : {
-			"level"    :  "NOTSET",
-			"handlers" : ["default", "debug"]
+			"level"    :  "INFO",
+			"handlers" : ["default"]
 
 		}
 
