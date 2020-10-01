@@ -1,7 +1,7 @@
 [submodule "modules/Cmd"]
 	path = modules/Cmd
 	url = https://github.com/UltraTesla/plugins
-	branch = unstable
+	branch = master
 [submodule "locales"]
 	path = locales
 	url = https://github.com/UltraTesla/languages
