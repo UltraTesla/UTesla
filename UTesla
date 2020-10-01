@@ -32,7 +32,7 @@ from modules.Privacy import addproxy
 
 # Cuando haya funcionalidades futuras y sean incompatibles con versiones
 # anteriores, la versión le indicará al cliente qué hacer.
-__VERSION__ = "2.0.3"
+__VERSION__ = "2.0.4"
 
 def safeQuit(ProcControl):
     if (len(ProcControl) > 0):
