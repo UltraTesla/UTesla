@@ -3,7 +3,7 @@
 
 ## ¿Qué hay de nuevo?
 
-En la última versión si hicieron grandes cambios, se arreglaron varios errores y se mejoraron muchas funcionalidades. Entre las más destacadas:
+En la última versión se hicieron grandes cambios, se arreglaron varios errores y se mejoraron muchas funcionalidades. Entre las más destacadas:
 
 * Posibilidad de transferir grandes cantidades de datos (probado con 3.5 GiB)
 * Eficiencia en cuanto a procesamiento y usabilidad en la memoria
