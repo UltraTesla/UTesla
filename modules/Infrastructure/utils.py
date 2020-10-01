@@ -705,7 +705,6 @@ async def is_service_allowed(token: str, pool: object, path: str) -> bool:
     else:
         (regex,) = regex
 
-
     if (re.match(regex, path)):
         return True
 

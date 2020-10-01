@@ -466,6 +466,12 @@ class MainHandler(tornado.tcpserver.TCPServer):
             **self.templates_conf
                 
         )
+        admin_template = CustomTemplate(
+            self.templates.get("intro"),
+            user_counter = user_counter,
+            **self.templates_conf
+                
+        )
         end_template = CustomTemplate(
             self.templates.get("end"),
             user_counter = user_counter,
@@ -507,9 +513,11 @@ class MainHandler(tornado.tcpserver.TCPServer):
         intro_template.set_request(control.request)
         intro_template.set_function_expression(self.__exp_func)
 
-        # La plantilla que se usará en el servicio y tendrá que ser
-        # igual a la introducción.
+        # La plantilla que se usará en el servicio y la del servicio
+        # administrativo; las dos tendrán que ser igual a la
+        # introducción.
         service_template.set_request(control.request)
+        admin_template.set_request(control.request)
 
         # Y por último el final
         end_template.set_request(control.request)
@@ -521,7 +529,6 @@ class MainHandler(tornado.tcpserver.TCPServer):
         gen = control.initialize()
 
         request_params = {
-            "template"              : service_template,
             "headers"               : control.headers,
             "request"               : control.request,
             "pool"                  : self.pool_object,
@@ -533,11 +540,13 @@ class MainHandler(tornado.tcpserver.TCPServer):
 
         # Ajustamos primero los procedimientos para el servicio actual.
         request_params["procs"] = self.__create_procs()
+        request_params["template"] = service_template
         request = RequestController(**request_params)
 
         # Y luego ajustamos los procedimientos para el servicio administrativo
         # para que no haya interferencias entre los dos.
         request_params["procs"] = self.__create_procs()
+        request_params["template"] = admin_template
         admin_request = RequestController(**request_params)
 
         try:
